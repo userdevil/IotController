@@ -1,0 +1,6 @@
+DefaultBuild/
+*.mtbk
+*.mtud
+*.haiia.mtud
+*.dr
+QualityReport*
