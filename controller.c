@@ -38,6 +38,141 @@ UINT8 ucBoardTestSMFlag;
 UINT8 ucModemType=MODEM_TYPE_2G;
 static UINT8 ucParaCntrParaConfig=0;
 
+static UINT8 appendJsonConfigField(UINT8 *pucJson, UINT8 *pucKey,
+					   UINT8 *pucCommand, UINT8 *pucOut,
+					   UINT16 uiOutSize)
+{
+	UINT8 ucValue[64];
+	if (getParameterFromJsonString(pucJson,pucKey,ucValue,sizeof(ucValue)) != SUCCESS)
+		return SUCCESS;
+	if (concatStirngsToStr1(pucOut,pucCommand,uiOutSize) == FAILURE ||
+	    concatStirngsToStr1(pucOut,ucValue,uiOutSize) == FAILURE ||
+	    concatStirngsToStr1(pucOut,(UINT8*)"#",uiOutSize) == FAILURE)
+		return FAILURE;
+	return SUCCESS;
+}
+
+static UINT8 buildSystemConfigCommandsFromJson(UINT8 *pucJson, UINT8 *pucOut,
+						       UINT16 uiOutSize)
+{
+	UINT32 ulLength=0;
+	pucOut[0]=0;
+	if (appendJsonConfigField(pucJson,(UINT8*)"SERVER_ADD",(UINT8*)"$SER_ADD=",pucOut,uiOutSize)==FAILURE ||
+	    appendJsonConfigField(pucJson,(UINT8*)"SERVER_PORT",(UINT8*)"$SER_PORT=",pucOut,uiOutSize)==FAILURE ||
+	    appendJsonConfigField(pucJson,(UINT8*)"SERVER_PATH",(UINT8*)"$SER_PATH=",pucOut,uiOutSize)==FAILURE ||
+	    appendJsonConfigField(pucJson,(UINT8*)"SER_APP_DATA",(UINT8*)"$SER_APP_DATA=",pucOut,uiOutSize)==FAILURE ||
+	    appendJsonConfigField(pucJson,(UINT8*)"SERVER_APP_DATA",(UINT8*)"$SER_APP_DATA=",pucOut,uiOutSize)==FAILURE ||
+	    appendJsonConfigField(pucJson,(UINT8*)"NO_OF_PARAMETERS",(UINT8*)"$NO_OF_PARAMETERS=",pucOut,uiOutSize)==FAILURE ||
+	    appendJsonConfigField(pucJson,(UINT8*)"DATA_ACQ_MINUTES",(UINT8*)"ACQ_INT=",pucOut,uiOutSize)==FAILURE ||
+	    appendJsonConfigField(pucJson,(UINT8*)"DATA_TRANS_MINUTES",(UINT8*)"TRANS_INT=",pucOut,uiOutSize)==FAILURE)
+		return FAILURE;
+	getStrLength(pucOut,&ulLength);
+	if(ulLength==0)
+		return FAILURE;
+	return SUCCESS;
+}
+
+static UINT8 loadCompactParameter(UINT8 *pucRecord, UINT16 uiLength, UINT16 uiParaId)
+{
+	UINT16 uiIndex, uiPacketLength=0, uiNameLength=0;
+	UINT16 uiSeparator=42;
+	UINT8 ucTemp[9];
+	PARA_CONFIG *pPara;
+	if(uiParaId>=N0_OF_PARAMETERS || uiLength<44)
+		return FAILURE;
+	for(uiIndex=42;uiIndex<uiLength;uiIndex++)
+	{
+		if(pucRecord[uiIndex]=='#')
+		{
+			uiSeparator=uiIndex;
+			break;
+		}
+	}
+	if(uiSeparator==42)
+		return FAILURE;
+	pPara=&sParaConfig[uiParaId];
+	for(uiIndex=0;uiIndex<sizeof(pPara->ucPraConfigArray);uiIndex++)
+		pPara->ucPraConfigArray[uiIndex]=0;
+	pPara->para.uiParaID=uiParaId;
+	pPara->para.ucParaSource=(UINT8)convAsciiIntToInt(pucRecord,2);
+	pPara->para.ucParaType=(UINT8)convAsciiIntToInt(&pucRecord[2],2);
+	pPara->para.ucRS485MeterType=pPara->para.ucParaType;
+	pPara->para.ucRS485Mode=(UINT8)(pucRecord[4]-'0');
+	pPara->para.ucRS485DataType=(UINT8)(pucRecord[5]-'0');
+	pPara->para.ucRS485Baud=(UINT8)(pucRecord[6]-'0');
+	pPara->para.ucRS485Bits=(UINT8)(pucRecord[7]-'0');
+	pPara->para.ucRS485Parity=(UINT8)(pucRecord[8]-'0');
+	pPara->para.ucRS485Stopbits=(UINT8)(pucRecord[9]-'0');
+	pPara->para.uiRS485Timout=convAsciiIntToInt(&pucRecord[10],4);
+	for(uiIndex=0;uiIndex<4;uiIndex++)
+	{
+		ucTemp[uiIndex*2]=pucRecord[20-uiIndex*2];
+		ucTemp[uiIndex*2+1]=pucRecord[21-uiIndex*2];
+	}
+	ucTemp[8]=0;
+	ASCIIHexToNumber(ucTemp,2);
+	pPara->para.fMultiplyFactor=uConvert.fFloatVar;
+	for(uiIndex=0;uiIndex<4;uiIndex++)
+	{
+		ucTemp[uiIndex*2]=pucRecord[28-uiIndex*2];
+		ucTemp[uiIndex*2+1]=pucRecord[29-uiIndex*2];
+	}
+	ucTemp[8]=0;
+	ASCIIHexToNumber(ucTemp,2);
+	pPara->para.fAdditionFactor=uConvert.fFloatVar;
+	for(uiIndex=0;uiIndex<30;uiIndex++) pPara->para.ucRS485Packet[uiIndex]=0;
+	uiPacketLength=(UINT16)(uiSeparator-42);
+	if(uiPacketLength>sizeof(pPara->para.ucRS485Packet)-1)
+		uiPacketLength=sizeof(pPara->para.ucRS485Packet)-1;
+	for(uiIndex=0;uiIndex<uiPacketLength;uiIndex++) pPara->para.ucRS485Packet[uiIndex]=pucRecord[42+uiIndex];
+	uiNameLength=(UINT16)(uiLength-uiSeparator-1);
+	if(uiNameLength>sizeof(pPara->para.ucParaStr)-1)
+		uiNameLength=sizeof(pPara->para.ucParaStr)-1;
+	for(uiIndex=0;uiIndex<sizeof(pPara->para.ucParaStr);uiIndex++) pPara->para.ucParaStr[uiIndex]=0;
+	for(uiIndex=0;uiIndex<uiNameLength;uiIndex++) pPara->para.ucParaStr[uiIndex]=pucRecord[uiSeparator+1+uiIndex];
+	storeParaConfig(uiParaId);
+	return SUCCESS;
+}
+
+static UINT8 loadParameterBatchFromJson(UINT8 *pucJson, UINT16 uiJsonLength)
+{
+	UINT8 ucRange[8], ucRecord[256];
+	UINT16 uiFrom,uiTo,uiLoaded=0,uiRecordLength;
+	UINT32 ulPosition=0,ulParaKey=0,ulLength=0;
+	if(getParameterFromJsonString(pucJson,(UINT8*)"FROM",ucRange,sizeof(ucRange))!=SUCCESS)
+		return FAILURE;
+	uiFrom=convAsciiIntToInt(ucRange,3);
+	if(getParameterFromJsonString(pucJson,(UINT8*)"TO",ucRange,sizeof(ucRange))!=SUCCESS)
+		return FAILURE;
+	uiTo=convAsciiIntToInt(ucRange,3);
+	if(uiTo<uiFrom || uiTo>=N0_OF_PARAMETERS ||
+	   searchStr(pucJson,(UINT8*)"\"PARA\"",uiJsonLength,&ulParaKey)!=SUCCESS)
+		return FAILURE;
+	getStrLength((UINT8*)"\"PARA\"",&ulLength);
+	ulPosition=ulParaKey+ulLength;
+	while(ulPosition<uiJsonLength && pucJson[ulPosition]!='[') ulPosition++;
+	if(ulPosition>=uiJsonLength) return FAILURE;
+	while(ulPosition<uiJsonLength && uiFrom<=uiTo)
+	{
+		while(ulPosition<uiJsonLength && pucJson[ulPosition]!='"') ulPosition++;
+		if(ulPosition>=uiJsonLength) break;
+		ulPosition++;
+		uiRecordLength=0;
+		while(ulPosition<uiJsonLength && pucJson[ulPosition]!='"' && pucJson[ulPosition]!='\\' && uiRecordLength<sizeof(ucRecord)-1)
+			ucRecord[uiRecordLength++]=pucJson[ulPosition++];
+		if(ulPosition>=uiJsonLength || pucJson[ulPosition]!='"') return FAILURE;
+		ulPosition++;
+		ucRecord[uiRecordLength]=0;
+		if(loadCompactParameter(ucRecord,uiRecordLength,uiFrom)!=SUCCESS) return FAILURE;
+		uiFrom++;
+		uiLoaded++;
+	}
+	if(uiLoaded==0) return FAILURE;
+	/* The parameter table is capped at 200 entries, which fits the counter. */
+	ucParaCntrParaConfig=(UINT8)uiFrom;
+	return SUCCESS;
+}
+
 UINT8 ucInitComplete = 0;
 
 UINT8 value[32];
@@ -53,38 +188,46 @@ void downloadParaConfig(void)
 	ucParaRemaining=(UINT8)ulSystemNoOfParameters-ucParaCntrParaConfig;
 	if(ucModemType==MODEM_TYPE_4G)
 	{
-		if(ucParaRemaining>3)
-			ucParaRemaining=3;
+		if(ucParaRemaining>10)
+			ucParaRemaining=10;
 	}
 	else
 	{
-		if(ucParaRemaining>2)
-			ucParaRemaining=2;
+		if(ucParaRemaining>10)
+			ucParaRemaining=10;
 	}
 	glcdWriteStrCallibri(2,25,(UINT8*)"Para Con. ",11,1);
 	glcdWriteLongCallibri(60,25,(UINT32)(((F32)ucParaCntrParaConfig*100)/(F32)ulSystemNoOfParameters) ,3,11,1);
 	glcdWriteStrCallibri(84,25,(UINT8*)"%",11,1);
 	
-	clearGeneralPurposeBuffer();
-	ucGeneralPurposeBuffer[0]=0x00;
-	concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"SYS_ID=",GENERAL_PURPOSE_BUFF_SIZE);
-	getStrLength(ucGeneralPurposeBuffer,&ulTempF);//LENGTH OF DATA
-	longHexToHexBytes(ulSystemID, &ucGeneralPurposeBuffer[ulTempF]);
-	concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"&PARA_ID=",GENERAL_PURPOSE_BUFF_SIZE);
-	getStrLength(ucGeneralPurposeBuffer,&ulTempF);//LENGTH OF DATA
-	longHexToHexBytes(ucParaCntrParaConfig, &ucGeneralPurposeBuffer[ulTempF]);
-	concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"&NO_OF_PARA=",GENERAL_PURPOSE_BUFF_SIZE);
-	getStrLength(ucGeneralPurposeBuffer,&ulTempF);//LENGTH OF DATA
-	longHexToHexBytes(ucParaRemaining, &ucGeneralPurposeBuffer[ulTempF]);
+	{
+		UINT8 ucFirstField=1;
+		UINT8 ucRange[8];
+		jsonBegin(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,&ucFirstField);
+		jsonAddStrField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"TYPE",(UINT8*)"PARA_CONFIG",&ucFirstField);
+		jsonAddHexField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"SYS_ID",ulSystemID,8,&ucFirstField);
+		intToASCIIStr(ucParaCntrParaConfig,3,sizeof(ucRange),ucRange);
+		jsonAddStrField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"FROM",ucRange,&ucFirstField);
+		intToASCIIStr((unsigned long)(ucParaCntrParaConfig+ucParaRemaining-1),3,sizeof(ucRange),ucRange);
+		jsonAddStrField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"TO",ucRange,&ucFirstField);
+		jsonEnd(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE);
+	}
 	prepareGPRSTransmitPacket(ucGeneralPurposeBuffer,ucGPRSTransmitBuffer,ucSerAdd,ucSerPort,ucSerPath,ucSerAppParaConfig,GPRS_TRANS_MODE_POST);
 	tranferDataToServer(&ucFlagRegistration,ucGPRSTransmitBuffer,ucSerAppParaConfig,GPRS_TRANS_MODE_POST,GPRS_CONNECTION_CLOSE);
 	if(ucFlagRegistration==0)
 	{
+		if(loadParameterBatchFromJson(ucGPRSRecvBuffer,uiGPRSRecvDataCount)==SUCCESS)
+		{
+			ucStatusF=SUCCESS;
+		}
+		else
+		{
 		//search for 1st para -> PARA_NO=0
 		ucStatusF = searchStr(ucGPRSRecvBuffer,(UINT8*)"PARA_NO=0",GPRS_REC_BUFFER_SIZE,&ulTempF);
 		if (ucStatusF == SUCCESS) 
 		{
 			getIndivitualParaConfig(&ucGPRSRecvBuffer[ulTempF]);	
+		}
 		}
 		
 		ucStatusF = searchStr(ucGPRSRecvBuffer,(UINT8*)"PARA_NO=1",GPRS_REC_BUFFER_SIZE,&ulTempF);
@@ -182,20 +325,38 @@ void downloadUnitConfig(void)
 {
 	UINT8 ucFlagRegistration=1,ucStatusF;
 	UINT32 ulTempF;
+	UINT32 ulJsonCommandsLength;
+	UINT8 ucJsonCommands[512];
 	
 	glcdWriteStrCallibri(2,25,(UINT8*)"Unit Config",11,1);	
-	clearGeneralPurposeBuffer();
-	ucGeneralPurposeBuffer[0]=0x00;
-	concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"SYS_ID=",GENERAL_PURPOSE_BUFF_SIZE);
-	getStrLength(ucGeneralPurposeBuffer,&ulTempF);//LENGTH OF DATA
-	longHexToHexBytes(ulSystemID, &ucGeneralPurposeBuffer[ulTempF]);
-	concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"&VER=2",GENERAL_PURPOSE_BUFF_SIZE);
+	{
+		UINT8 ucFirstField=1;
+		jsonBegin(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,&ucFirstField);
+		jsonAddStrField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"TYPE",(UINT8*)"SERVER_DETAILS",&ucFirstField);
+		jsonAddHexField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"SYSTEM_ID",ulSystemID,8,&ucFirstField);
+		jsonEnd(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE);
+	}
 	
 	
 	prepareGPRSTransmitPacket(ucGeneralPurposeBuffer,ucGPRSTransmitBuffer,ucSerAdd,ucSerPort,ucSerPath,ucSerAppSysConfig,GPRS_TRANS_MODE_POST);
 	tranferDataToServer(&ucFlagRegistration,ucGPRSTransmitBuffer,ucSerAppSysConfig,GPRS_TRANS_MODE_POST,GPRS_CONNECTION_CLOSE);
 	if(ucFlagRegistration==0)
 	{
+		ucStatusF = getParameterFromJsonString(ucGPRSRecvBuffer,(UINT8*)"SYSTEM_ID",ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE);
+		if(ucStatusF==SUCCESS)
+		{
+			ASCIIHexToNumber(ucGeneralPurposeBuffer,2);
+			ulTempF=uConvert.ulLongVar;
+			if(ulTempF==ulSystemID && buildSystemConfigCommandsFromJson(ucGPRSRecvBuffer,ucJsonCommands,sizeof(ucJsonCommands))==SUCCESS)
+			{
+				ucSystemDownloadUnitConfig=0;
+				writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_DL_UNIT_CONIG,ucSystemDownloadUnitConfig);
+				getStrLength(ucJsonCommands,&ulJsonCommandsLength);
+				checkBufferForCommands(ucJsonCommands,(UINT16)ulJsonCommandsLength,BUFFER_DONT_CLEAR);
+				glcdWriteStrCallibri(2,25,(UINT8*)"                              ",11,1);
+				return;
+			}
+		}
 		ucStatusF = getValueFromBuff(ucGPRSRecvBuffer, (UINT8*) "$SysID=", (UINT8*) "#", ucGeneralPurposeBuffer, GENERAL_PURPOSE_BUFF_SIZE);
                 if (ucStatusF == SUCCESS) 
 		{
@@ -1457,7 +1618,7 @@ void sendJsonParaInfoViaDebug(void)
 {
 	UINT8 ucParaCntrF=0;
 	UINT8 ucHEXRep[10]="12345678";
-	UARTSendStr(UART_DEBUG,(UINT8 *)"${");
+	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"DATA_TYPE\": \"PARA\",");
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"NO_OF_PARA\": \"");
@@ -1508,7 +1669,7 @@ void sendJsonParaInfoViaDebug(void)
 	}
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"]");
-	UARTSendStr(UART_DEBUG,(UINT8 *)"}#");
+	UARTSendStr(UART_DEBUG,(UINT8 *)"}\r\n");
 }
 
 
@@ -1543,11 +1704,11 @@ void sendJsonSystemInfoViaDebug(void)
 	UINT8 ucHEXRep[10]="12345678";
 	
 	
-	UARTSendStr(UART_DEBUG,(UINT8 *)"${");
+	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"DATA_TYPE\": \"SYSTEM\",");
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"NO_OF_PARA\": \"");
-	UARTSendLong(UART_DEBUG,17,3);
+	UARTSendLong(UART_DEBUG,13,3);
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\",");
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"DATA\":[");
@@ -1708,9 +1869,8 @@ void sendJsonSystemInfoViaDebug(void)
 	
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
-	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"PARA");
-	UARTSendLong(UART_DEBUG,13,3);
+	UARTSendLong(UART_DEBUG,9,3);
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\":");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"[");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"");
@@ -1730,7 +1890,7 @@ void sendJsonSystemInfoViaDebug(void)
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"PARA");
-	UARTSendLong(UART_DEBUG,14,3);
+	UARTSendLong(UART_DEBUG,10,3);
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\":");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"[");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"");
@@ -1748,7 +1908,7 @@ void sendJsonSystemInfoViaDebug(void)
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"PARA");
-	UARTSendLong(UART_DEBUG,15,3);
+	UARTSendLong(UART_DEBUG,11,3);
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\":");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"[");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"");
@@ -1766,7 +1926,7 @@ void sendJsonSystemInfoViaDebug(void)
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"PARA");
-	UARTSendLong(UART_DEBUG,16,3);
+	UARTSendLong(UART_DEBUG,12,3);
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\":");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"[");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"");
@@ -1782,7 +1942,7 @@ void sendJsonSystemInfoViaDebug(void)
 	
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"]");
-	UARTSendStr(UART_DEBUG,(UINT8 *)"}#");
+	UARTSendStr(UART_DEBUG,(UINT8 *)"}\r\n");
 	
 }
 
@@ -1794,7 +1954,7 @@ void sendJsonBoardInfoViaDebug(void)
 	UINT8 ucHEXRep[10]="12345678";
 	ucBaordTestInProgress=1;
 	
-	UARTSendStr(UART_DEBUG,(UINT8 *)"${");
+	UARTSendStr(UART_DEBUG,(UINT8 *)"{");
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"DATA_TYPE\": \"BOARD\",");
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\"NO_OF_PARA\": \"");
@@ -2196,7 +2356,7 @@ void sendJsonBoardInfoViaDebug(void)
 	
 	
 	UARTSendStr(UART_DEBUG,(UINT8 *)"]");
-	UARTSendStr(UART_DEBUG,(UINT8 *)"}#");
+	UARTSendStr(UART_DEBUG,(UINT8 *)"}\r\n");
 	
 }
 

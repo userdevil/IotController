@@ -115,7 +115,12 @@ void prepareGPRSTransmitPacket(UINT8* pucData, UINT8* pucTransmitBuffer, UINT8* 
 			getStrLength(pucTransmitBuffer,&ulTempBf);//POSITION OF LAST CHAR IN TRANSMIT BUFFER
 			intToASCIIStr(ulTempAf,4,11,&pucTransmitBuffer[ulTempBf]);
 			concatStirngsToStr1(pucTransmitBuffer,(UINT8*)"\r\n",GPRS_TRA_BUFFER_SIZE);
-			concatStirngsToStr1(pucTransmitBuffer,(UINT8*)"Connection: keepalive\r\nUser-Agent: Mozilla/5.0\r\nContent-Type: application/x-www-form-urlencoded\r\nAccept: */*\r\nAccept-Encoding: gzip,deflate,sdch\r\nAccept-Language: en-US,en;q=0.8\r\n\r\n",GPRS_TRA_BUFFER_SIZE);
+			concatStirngsToStr1(pucTransmitBuffer,(UINT8*)"Connection: keepalive\r\nUser-Agent: Mozilla/5.0\r\n",GPRS_TRA_BUFFER_SIZE);
+			if(pucData[0]=='{')
+				concatStirngsToStr1(pucTransmitBuffer,(UINT8*)"Content-Type: application/json\r\n",GPRS_TRA_BUFFER_SIZE);
+			else
+				concatStirngsToStr1(pucTransmitBuffer,(UINT8*)"Content-Type: application/x-www-form-urlencoded\r\n",GPRS_TRA_BUFFER_SIZE);
+			concatStirngsToStr1(pucTransmitBuffer,(UINT8*)"Accept: */*\r\nAccept-Encoding: gzip,deflate,sdch\r\nAccept-Language: en-US,en;q=0.8\r\n\r\n",GPRS_TRA_BUFFER_SIZE);
 			concatStirngsToStr1(pucTransmitBuffer,pucData,GPRS_TRA_BUFFER_SIZE);
 			getStrLength(pucTransmitBuffer,&ulTempAf);
 			pucTransmitBuffer[ulTempAf]=0X1A;
