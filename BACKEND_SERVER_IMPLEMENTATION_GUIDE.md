@@ -28,13 +28,7 @@ sequenceDiagram
         S-->>D: HTTP 200 JSON with encoded parameter table array
     end
 
-    opt Power Limiting / DG Protection (if PL_ENABLE = 1)
-        Note over D,S: PHASE 4: Power Limiting Config
-        D->>S: GET /hw_reqv3?type=PL_CONFIG&KEY=<SYSTEM_ID>
-        S-->>D: HTTP 200 JSON with PMAX, PMIN, and Inverter registers
-    end
-
-    Note over D,S: PHASE 5: Telemetry Upload (Periodic / Continuous)
+    Note over D,S: PHASE 4: Telemetry Upload (Periodic / Continuous)
     loop Every Transmission Interval (e.g., every 60 seconds)
         D->>S: POST /dataTransfer (Content-Type: application/x-www-form-urlencoded)<br/>Body: DATA000=<UPPERCASE_HEX_PAYLOAD>
         S-->>D: HTTP 200 with Time-Sync Token: >$IST=YYYYMMDDHHmmss#
@@ -73,8 +67,7 @@ The backend looks up or creates the device entry using the IMEI and returns an 8
   "SER_APP_DATA": "dataTransfer",
   "NO_OF_PARAMETERS": "00A",
   "DATA_ACQ_MINUTES": "01",
-  "DATA_TRANS_MINUTES": "05",
-  "PL_ENABLE": "0"
+  "DATA_TRANS_MINUTES": "05"
 }
 ```
 
@@ -111,7 +104,6 @@ Called by the device after registration to obtain operational intervals and endp
   "NO_OF_PARAMETERS": "00A",
   "DATA_ACQ_MINUTES": "01",
   "DATA_TRANS_MINUTES": "05",
-  "PL_ENABLE": "0",
   "MQTT_ADD": "",
   "MQTT_PORT": "1883",
   "MQTT_USN": "",
@@ -132,7 +124,6 @@ Called by the device after registration to obtain operational intervals and endp
 | `NO_OF_PARAMETERS`| String (3 hex) | Active parameter count in hex (`"00A"` = 10, `"064"` = 100) |
 | `DATA_ACQ_MINUTES`| String (2 hex) | Polling frequency in minutes / intervals (e.g., `"01"` = 1 min) |
 | `DATA_TRANS_MINUTES`| String (2 hex) | Telemetry upload frequency (e.g., `"05"` = 5 min) |
-| `PL_ENABLE` | String (`"0"` / `"1"`) | `"1"` if Power Limiting / DG protection is active, else `"0"` |
 
 ---
 
@@ -196,49 +187,7 @@ $$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_
 
 ---
 
-### Endpoint 4: Power Limiting Configuration (`GET /hw_reqv3`)
-
-Only requested if `PL_ENABLE` was set to `"1"` in System Configuration.
-
-* **Method:** `GET`
-* **Path:** `/hw_reqv3?type=PL_CONFIG&KEY=<SYSTEM_ID>`
-
-#### Expected Server Response (HTTP 200 JSON):
-All numeric values are **8-character little-endian IEEE-754 hex floats**:
-
-```json
-{
-  "TYPE": "04000000",
-  "PMAX": "0000C842",
-  "PMIN": "00002041",
-  "INC_SEC": "0000A040",
-  "DEC_SEC": "0000A040",
-  "INC_DEC_SEP": "0000A040",
-  "S_DET_WT": "0000C842",
-  "BUFF": "0000C842",
-  "NON_COMM": "00002041",
-  "ALLOW_NEG": "00000000",
-  "SD_EXP_SEC": "0000F041",
-  "MIN_NG_P": "00000000",
-  "P1_MIN": "00000000", "P1_A_MIN": "00000000",
-  "P2_MIN": "00000000", "P2_A_MIN": "00000000",
-  "P3_MIN": "00000000", "P3_A_MIN": "00000000",
-  "P4_MIN": "00000000", "P4_A_MIN": "00000000",
-  "P5_MIN": "00000000", "P5_A_MIN": "00000000",
-  "INV_1_MB_ID": "0000803F",
-  "INV_1_FC": "0000C040",
-  "INV_1_REF": "00000000",
-  "INV_1_REG_ADD": "0000803F",
-  "INV_1_PWR_MUL": "0000803F",
-  "INV_1_PORT": "00000000",
-  "INV_1_PRE": "00000000",
-  "INV_1_POST": "00000000"
-}
-```
-
----
-
-### Endpoint 5: Telemetry / Sensor Data Ingestion (`POST /dataTransfer`)
+### Endpoint 4: Telemetry / Sensor Data Ingestion (`POST /dataTransfer`)
 
 Uploaded periodically by the device.
 
@@ -306,7 +255,6 @@ CREATE TABLE devices (
     data_app VARCHAR(50) DEFAULT 'dataTransfer',
     acq_interval_min INT DEFAULT 1,
     trans_interval_min INT DEFAULT 5,
-    pl_enable BOOLEAN DEFAULT FALSE,
     last_seen_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -472,8 +420,7 @@ async def handle_hw_request(request: Request):
             "SER_APP_DATA": "dataTransfer",
             "NO_OF_PARAMETERS": "002",
             "DATA_ACQ_MINUTES": "01",
-            "DATA_TRANS_MINUTES": "01",
-            "PL_ENABLE": "0"
+            "DATA_TRANS_MINUTES": "01"
         })
 
     # 2. PARAMETERS CONFIGURATION
@@ -493,16 +440,6 @@ async def handle_hw_request(request: Request):
             "FROM": f"{from_idx:03d}",
             "TO": f"{to_idx:03d}",
             "PARA": selected
-        })
-
-    # 3. POWER LIMITING CONFIGURATION
-    if req_type == "PL_CONFIG":
-        return JSONResponse({
-            "PMAX": "0000C842",      # 100.0f
-            "PMIN": "00002041",      # 10.0f
-            "INC_SEC": "0000A040",   # 5.0f
-            "DEC_SEC": "0000A040",   # 5.0f
-            "INC_DEC_SEP": "0000A040"# 5.0f
         })
 
     return JSONResponse({"status": "error", "msg": "unknown request"}, status_code=400)

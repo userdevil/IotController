@@ -1032,16 +1032,6 @@ void checkBufferForCommands(UINT8* pucBuffer, UINT16 uiBufferSize, UINT8 ucClear
 		UARTSendLong(UART_DEBUG, ucAppType, 2);
 	//	concatStirngsToStr1(ucResponseStr,(UINT8*)",App type",145);
 	}
-	ucStatusF = getValueFromBuff(pucBuffer, (UINT8*) "$INV_TYPE=", (UINT8*) "#", ucGeneralPurposeBuffer, uiBufferSize);
-	if (ucStatusF == SUCCESS) 
-	{
-		ucInverterType=(UINT8)convAsciiIntToInt(&ucGeneralPurposeBuffer[0],2);
-		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_INV_TYPE,ucInverterType);
-		UARTSendStr(UART_DEBUG, (UINT8*) "\rCmd Rec-> Inv type = ");
-		UARTSendLong(UART_DEBUG, ucInverterType, 2);
-	//	concatStirngsToStr1(ucResponseStr,(UINT8*)",Inv type",145);
-	}
-	
 	ucStatusF = getValueFromBuff(pucBuffer, (UINT8*) "ACQ_INT=", (UINT8*) "#", ucGeneralPurposeBuffer, uiBufferSize);
 	if (ucStatusF == SUCCESS) 
 	{

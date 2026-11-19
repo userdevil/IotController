@@ -30,8 +30,7 @@ flowchart TD
     CheckFlags -->|ucRegistration = 0| SysReg[1. DT_SysReg / System ID]
     CheckFlags -->|ucSystemConfig = 0| SysCfg[2. SYS_Config / Server & Intervals]
     CheckFlags -->|ucParaConfig = 0| ParaCfg[3. PARA_Config / Sensor Table]
-    CheckFlags -->|ucPLConfig = 0| PLCfg[4. PL_Config / Inverter Control]
-    SysReg --> SysCfg --> ParaCfg --> PLCfg --> NormalOp[Normal Acquisition & Uplink]
+    SysReg --> SysCfg --> ParaCfg --> NormalOp[Normal Acquisition & Uplink]
 ```
 
 ---
@@ -84,11 +83,6 @@ Downloaded via HTTP GET `hw_reqv3?type=SERVER_DETAILS&KEY=<SYS_ID_HEX>` or injec
       "type": "string",
       "description": "Server data upload interval in hexadecimal seconds/minutes"
     },
-    "PL_ENABLE": {
-      "type": "string",
-      "enum": ["0", "1"],
-      "description": "DG/Power Limiting protection loop enable ('0' = disabled, '1' = enabled)"
-    },
     "MQTT_ADD": { "type": "string", "maxLength": 49, "description": "MQTT Broker hostname/IP" },
     "MQTT_PORT": { "type": "string", "maxLength": 6, "description": "MQTT Broker port (e.g. '1883')" },
     "MQTT_USN": { "type": "string", "maxLength": 24, "description": "MQTT Username" },
@@ -114,8 +108,7 @@ Downloaded via HTTP GET `hw_reqv3?type=SERVER_DETAILS&KEY=<SYS_ID_HEX>` or injec
   "SER_APP_DATA": "dataTransfer",
   "NO_OF_PARAMETERS": "00A",
   "DATA_ACQ_MINUTES": "01",
-  "DATA_TRANS_MINUTES": "05",
-  "PL_ENABLE": "0"
+  "DATA_TRANS_MINUTES": "05"
 }
 ```
 
@@ -198,55 +191,6 @@ $$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_
 
 ---
 
-### C. Power Limiting (DG/PL) Configuration (`PL_CONFIG`)
-
-Controls zero-export / power curtailment feedback loops to solar inverters. Identified by the `"PMAX"` key. Numeric fields are encoded as **8-character little-endian IEEE-754 hex floats**.
-
-#### JSON Schema
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PowerLimitingConfiguration",
-  "type": "object",
-  "required": ["PMAX", "PMIN"],
-  "properties": {
-    "TYPE": { "type": "string", "description": "Control mode (LE hex integer)" },
-    "PMAX": { "type": "string", "description": "Maximum commanded inverter power % (LE float hex)" },
-    "PMIN": { "type": "string", "description": "Minimum commanded inverter power % (LE float hex)" },
-    "INC_SEC": { "type": "string", "description": "Ramp-up cycle time in seconds (LE float hex)" },
-    "DEC_SEC": { "type": "string", "description": "Ramp-down cycle time in seconds (LE float hex)" },
-    "INC_DEC_SEP": { "type": "string", "description": "Ramp step size % (LE float hex)" },
-    "S_DET_WT": { "type": "string", "description": "Start detection threshold wattage (also accepts 'START_WT')" },
-    "BUFF": { "type": "string", "description": "Power deadband buffer in watts" },
-    "NON_COMM": { "type": "string", "description": "Consecutive non-comm timeouts before curtailment" },
-    "ALLOW_NEG": { "type": "string", "description": "Consecutive export cycles allowed before shutdown" },
-    "SD_EXP_SEC": { "type": "string", "description": "Shutdown delay upon active export" },
-    "MIN_NG_P": { "type": "string", "description": "Minimum negative power threshold" },
-    "P1_MIN": { "type": "string" }, "P1_A_MIN": { "type": "string" },
-    "P2_MIN": { "type": "string" }, "P2_A_MIN": { "type": "string" },
-    "P3_MIN": { "type": "string" }, "P3_A_MIN": { "type": "string" },
-    "P4_MIN": { "type": "string" }, "P4_A_MIN": { "type": "string" },
-    "P5_MIN": { "type": "string" }, "P5_A_MIN": { "type": "string" },
-    "INV_1_MB_ID": { "type": "string" }, "INV_1_FC": { "type": "string" },
-    "INV_1_REF": { "type": "string" }, "INV_1_REG_ADD": { "type": "string" },
-    "INV_1_PWR_MUL": { "type": "string" }, "INV_1_PORT": { "type": "string" },
-    "INV_1_PRE": { "type": "string" }, "INV_1_POST": { "type": "string" },
-    "INV_2_MB_ID": { "type": "string" }, "INV_2_FC": { "type": "string" },
-    "INV_2_REF": { "type": "string" }, "INV_2_REG_ADD": { "type": "string" },
-    "INV_2_PWR_MUL": { "type": "string" }, "INV_2_PORT": { "type": "string" },
-    "INV_2_PRE": { "type": "string" }, "INV_2_POST": { "type": "string" },
-    "INV_3_MB_ID": { "type": "string" }, "INV_3_FC": { "type": "string" },
-    "INV_3_REF": { "type": "string" }, "INV_3_REG_ADD": { "type": "string" },
-    "INV_3_PWR_MUL": { "type": "string" }, "INV_3_PORT": { "type": "string" },
-    "INV_3_PRE": { "type": "string" }, "INV_3_POST": { "type": "string" },
-    "INV_4_MB_ID": { "type": "string" }, "INV_4_FC": { "type": "string" },
-    "INV_4_REF": { "type": "string" }, "INV_4_REG_ADD": { "type": "string" },
-    "INV_4_PWR_MUL": { "type": "string" }, "INV_4_PORT": { "type": "string" },
-    "INV_4_PRE": { "type": "string" }, "INV_4_POST": { "type": "string" }
-  }
-}
-```
-
 ---
 
 ## 3. Debug & Maintenance Command Reference (`CMD` & `REQ`)
@@ -265,7 +209,6 @@ Sets individual subsystem verbosity flags in RAM (resets to defaults on reboot).
   "mb1": "0|1|2",
   "mb2": "0|1|2",
   "dtx": "0|1",
-  "pl": "0|1",
   "nw": "0|1",
   "all": "0|1"
 }
@@ -276,7 +219,6 @@ Sets individual subsystem verbosity flags in RAM (resets to defaults on reboot).
 * **`mb1`**: RS485 Port 1 RTU trace (`0`=off, `1`=concise, `2`=full hex frames).
 * **`mb2`**: RS485 Port 2 RTU trace (`0`=off, `1`=concise, `2`=full hex frames).
 * **`dtx`**: Flash upload POST body display (`0`=off, `1`=show body text).
-* **`pl`**: Power Limiting operation status lines (`0`=off, `1`=active tracking).
 * **`nw`**: Uplink network event traces (W5500, EC200U 4G, FCM360W Wi-Fi).
 * **`all`**: Master trace output toggle.
 
@@ -371,13 +313,12 @@ Syncs time immediately to the on-board MCP7940 real-time clock over I2C.
 * **Force Re-download of Configs (`clearFlags`):**  
   Clears individual or all download flags in EEPROM so the device fetches fresh configs on next cycle.
   ```json
-  {"CMD":"clearFlags","reg":"1","sys":"1","para":"1","pl":"1"}
+  {"CMD":"clearFlags","reg":"1","sys":"1","para":"1"}
   ```
 * **Named Flag Shortcuts:**
   * `{"CMD":"RESET_EEPROM"}`: Clears all flags AND resets Flash FIFO (keeps IMEI).
   * `{"CMD":"UNIT_CONFIG"}`: Clears registration and system config flags.
   * `{"CMD":"PARACONFIG"}`: Clears DAQ parameter flag.
-  * `{"CMD":"PL_CONFIG"}`: Clears Power Limiting configuration flag.
 * **Erase Flash FIFO (`ERASE_FLASH`):**  
   Resets read/write/sequence pointers to 0 and invalidates existing record magic bytes.
   ```json
@@ -473,33 +414,6 @@ Dumps the parameter table stored in EEPROM with transmission pacing for serial B
       "name": "Active Power"
     }
   ]
-}
-```
-
-#### 5. Read Stored Power Limiting Config & State (`GET_PL_CONFIG`)
-```json
-// Send:
-{"REQ":"GET_PL_CONFIG"}
-
-// Response:
-{
-  "pl_en": 1,
-  "pl_flag": 1,
-  "type": 4,
-  "pmax": 100.0,
-  "pmin": 10.0,
-  "step": 5.0,
-  "inc_s": 5.0,
-  "dec_s": 5.0,
-  "buff": 100.0,
-  "start_wt": 100.0,
-  "non_comm": 10.0,
-  "sd_exp_s": 30.0,
-  "allow_neg": 0.0,
-  "min_ng_p": 0.0,
-  "pwr_pct": 85,
-  "sel_meter": 2,
-  "op": 0
 }
 ```
 

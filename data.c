@@ -35,8 +35,6 @@ UINT8 ucRS485BusFlag;
 
 UINT8 ucCumilativeResetFlag;
 
-F32 fInverterPower;
-
 UINT8 ucParaBeingAcquired =0;
 
 UINT16 uiParaAcqSeconds = 0;
@@ -46,8 +44,6 @@ void acquireData(UINT8* pucPCF)
 {
 	static UINT8 ucFirstTimeFlag=1;
 	static UINT32 ulParaCntrF = 0;
-	static F32 fInvPowerTemp=0;
-	static UINT8 ucNoOfInvertersCommunicating=0;//1042
 	UINT8 ucIndPraAcqCmpFlag=0;
 	UINT8 ucProcessMODBUSCmd=1;
 	F32 fPreValueOfParameter=sParaConfig[ulParaCntrF].para.value.fValue;
@@ -70,9 +66,6 @@ void acquireData(UINT8* pucPCF)
 			UARTSendStr(UART_DEBUG, (UINT8*) "\r\r\r Acquiring board data");
 		}
 		ucFirstTimeFlag=0;
-		fInvPowerTemp=0;
-		//1042
-		ucNoOfInvertersCommunicating=0;
 	}
 	// no para
 	if (sParaConfig[ulParaCntrF].para.ucParaSource == 0)
@@ -161,7 +154,7 @@ void acquireData(UINT8* pucPCF)
 		ucParaStatus = 1;
 		ucIndPraAcqCmpFlag=1;
 	}
-	//RS4851 //1007 else addes. //1007 source RS485-2 will also be used for rs485, ALL DG power will configured  as RS485 2 
+	// RS485 acquisition
         else if ( (sParaConfig[ulParaCntrF].para.ucParaSource == 12) ) 
 	{
 		ucProcessMODBUSCmd=1;
@@ -309,13 +302,6 @@ void acquireData(UINT8* pucPCF)
 				}
 			}
 		}
-		//1018
-		if( (sParaConfig[ulParaCntrF].para.ucParaType==24) && (sParaConfig[ulParaCntrF].para.ucValueStatusBit == 1 ) )
-		{
-			fInvPowerTemp += sParaConfig[ulParaCntrF].para.value.fValue;
-		
-			ucNoOfInvertersCommunicating++; //	1042
-		}
 		if( (ucDebugEnableFlag==DEBUG_ENABLE_ALL) || (ucDebugRS485==1) )
 		{
 			
@@ -352,20 +338,11 @@ void acquireData(UINT8* pucPCF)
 			}
 			
 
-			fInverterPower=fInvPowerTemp;
-			fInvPowerTemp=0;
 			if( (ucDebugEnableFlag==DEBUG_ENABLE_ALL) || (ucDebugRS485==1) )
 			{
 				UARTSendStr(UART_DEBUG, (UINT8*) "\rData Acq Complete   ");
 				UARTSendLong(UART_DEBUG,uiParaAcqSeconds,3);
 			}
-			
-			
-			//1042
-			if(ucNoOfInvertersCommunicating==0)
-				RELAY_3=REALY_ON;
-			else
-				RELAY_3=REALY_OFF;
 			
 			
 		}

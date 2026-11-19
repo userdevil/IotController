@@ -25,7 +25,6 @@ UINT8 	ucSystemRegistrationStatus;
 UINT8 	ucInternetSource;
 UINT32 	ulSystemID;
 UINT8 	ucAppType;
-UINT8 	ucInverterType;
 UINT32 	ulSystemNoOfParameters;
 UINT8 	ucSystemDownloadUnitConfig;
 UINT8 	ucSystemDownloadParaConfig;
@@ -210,8 +209,6 @@ void readDataFromMemory(void)
 		
 		ucAppType=0;
 		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_APP_TYPE,ucAppType);
-		ucInverterType=0;
-		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_INV_TYPE,ucInverterType);
 		
 		//1016
 		ucEnableCSV=0;
@@ -497,7 +494,6 @@ void readDataFromMemory(void)
 	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_INTERNET_SOURCE,&ucInternetSource);
 	ucInternetSource=0;
 	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_APP_TYPE,&ucAppType);
-	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_INV_TYPE,&ucInverterType);
 		
 	readExtEEPROMFloat(EEPROM_ADD,EEPROM_LOC_STORE_PARA_1_LOC,&fParaStoreLocation1);
 	readExtEEPROMFloat(EEPROM_ADD,EEPROM_LOC_STORE_PARA_2_LOC,&fParaStoreLocation2);
@@ -563,8 +559,6 @@ void readDataFromMemory(void)
 	UARTSendLong(UART_DEBUG,ulAcqInterwal,3);
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\r App Type :");
 	UARTSendLong(UART_DEBUG,ucAppType,2);
-	UARTSendStr(UART_DEBUG,(UINT8 *)"\r Inverter type :");
-	UARTSendLong(UART_DEBUG,ucInverterType,2);
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\r Int Cntr :");
 	UARTSendLong(UART_DEBUG,ulIntCntr,8);
 	}

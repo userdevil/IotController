@@ -37,7 +37,6 @@
 #define EEPROM_LOC_STORE_PARA_10_LOC    166	//4 bytes
 #define EEPROM_LOC_ACQ_INTERVAL		170	//4 bytes
 #define EEPROM_LOC_APP_TYPE		174	//1 bytes
-#define EEPROM_LOC_INV_TYPE		175	//1 bytes
 #define EEPROM_LOC_INT_CNTR		176	//4 bytes
 
 
@@ -169,7 +168,6 @@ extern UINT8 	ucSystemRegistrationStatus;
 extern UINT8 	ucInternetSource;
 extern UINT32 	ulSystemID;
 extern UINT8 	ucAppType;
-extern UINT8 	ucInverterType;
 extern UINT32 	ulSystemNoOfParameters;
 extern UINT8 	ucSystemDownloadUnitConfig;
 extern UINT8 	ucSystemDownloadParaConfig;

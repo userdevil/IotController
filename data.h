@@ -33,8 +33,6 @@ extern UINT16 ucTimerNonComm;
 
 extern UINT8 ucCumilativeResetFlag;
 
-extern F32 fInverterPower;
-
 extern UINT8 ucParaBeingAcquired;
 
 #endif

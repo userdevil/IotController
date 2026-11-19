@@ -81,9 +81,6 @@ void displayScreen(void)
 			drawdSenZlogo();
 			glcdWriteLongCallibri(2,35,ulSystemID,5,11,1);
 			
-			glcdWriteFloatCallibri(70,35,(fInverterPower/1000),4,1,11,1);
-			glcdWriteStrCallibri(110, 35, (UINT8*)"kW",11,1);
-			
 			intToArray(sRTC.ucHours,2,5,&uisTime[0]);
 			intToArray(sRTC.ucMinutes,2,5,&uisTime[3]);
 			intToArray(sRTC.ucSeconds,2,5,&uisTime[6]);
