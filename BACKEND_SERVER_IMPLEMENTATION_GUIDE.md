@@ -1,6 +1,6 @@
-# esenzX2 / IoT Controller — Backend Server Implementation Guide
+# IoT Controller — Backend Server Implementation Guide
 
-This document is a complete, self-contained engineering specification for building a backend server (Node.js, Python, Go, C#/.NET, Java, etc.) that interfaces with the **esenzX2** family of industrial IoT controllers (Renesas RL78/G13 embedded hardware).
+This document is a complete, self-contained engineering specification for building a backend server (Node.js, Python, Go, C#/.NET, Java, etc.) that interfaces with industrial IoT controllers based on Renesas RL78/G13 hardware.
 
 ---
 
@@ -11,7 +11,7 @@ The device communicates over **HTTP/1.1** via Cellular 4G (Quectel EC200U), Wi-F
 ```mermaid
 sequenceDiagram
     autonumber
-    participant D as esenzX2 Hardware
+    participant D as IoT Controller
     participant S as Backend Server
 
     Note over D,S: PHASE 1: Device Handshake & Provisioning
@@ -67,7 +67,7 @@ The backend looks up or creates the device entry using the IMEI and returns an 8
 ```json
 {
   "SYSTEM_ID": "5E0D0000",
-  "SERVER_ADD": "www.esenzvps3.in",
+  "SERVER_ADD": "config.example.com",
   "SERVER_PORT": "80",
   "SERVER_PATH": "/",
   "SER_APP_DATA": "dataTransfer",
@@ -104,7 +104,7 @@ Called by the device after registration to obtain operational intervals and endp
 ```json
 {
   "SYSTEM_ID": "5E0D0000",
-  "SERVER_ADD": "www.esenzvps3.in",
+  "SERVER_ADD": "config.example.com",
   "SERVER_PORT": "80",
   "SERVER_PATH": "/",
   "SER_APP_DATA": "dataTransfer",
@@ -300,7 +300,7 @@ CREATE TABLE devices (
     system_id VARCHAR(8) PRIMARY KEY,      -- Little-endian hex string e.g. '5E0D0000'
     imei VARCHAR(15) UNIQUE NOT NULL,       -- Device hardware IMEI
     name VARCHAR(100),
-    server_add VARCHAR(50) DEFAULT 'www.esenzvps3.in',
+    server_add VARCHAR(50) DEFAULT 'config.example.com',
     server_port VARCHAR(6) DEFAULT '80',
     server_path VARCHAR(50) DEFAULT '/',
     data_app VARCHAR(50) DEFAULT 'dataTransfer',
@@ -364,7 +364,7 @@ Below is a complete, working backend server in Python utilizing **FastAPI**:
 
 ```python
 """
-esenzX2 Backend Server Implementation
+IoT Controller Backend Server Implementation
 Requirements:
     pip install fastapi uvicorn
 Run:
@@ -376,7 +376,7 @@ from fastapi.responses import PlainTextResponse, JSONResponse
 from datetime import datetime
 import struct
 
-app = FastAPI(title="esenzX2 IoT Backend Server")
+app = FastAPI(title="IoT Controller Backend Server")
 
 def parse_bcd(byte_val: int) -> int:
     return ((byte_val >> 4) * 10) + (byte_val & 0x0F)

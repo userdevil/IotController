@@ -1,4 +1,4 @@
-# esenzX2 / IoT Control — JSON Specification & Command Reference
+# IoT Control — JSON Specification & Command Reference
 
 **Firmware Target:** Renesas RL78/G13 (`R5F100PL`)  
 **Architecture:** Bare-metal, interrupt-driven, multi-transport (Ethernet W5500, Wi-Fi FCM360W, 4G EC200U)  
@@ -108,7 +108,7 @@ Downloaded via HTTP GET `hw_reqv3?type=SERVER_DETAILS&KEY=<SYS_ID_HEX>` or injec
 ```json
 {
   "SYSTEM_ID": "5E0D0000",
-  "SERVER_ADD": "www.esenzvps3.in",
+  "SERVER_ADD": "config.example.com",
   "SERVER_PORT": "80",
   "SERVER_PATH": "/",
   "SER_APP_DATA": "dataTransfer",
@@ -292,7 +292,7 @@ Sets individual subsystem verbosity flags in RAM (resets to defaults on reboot).
 #### Set Endpoints (`setServer`)
 Configures either the configuration download or the data upload server target.
 ```json
-{"CMD":"setServer","ep":"config|data","addr":"www.esenzvps3.in","port":"80","app":"dataTransfer"}
+{"CMD":"setServer","ep":"config|data","addr":"config.example.com","port":"80","app":"dataTransfer"}
 ```
 
 #### Set Authentication Credentials (`setAuth`)
@@ -511,7 +511,7 @@ The firmware issues two types of requests to the backend server:
 
 ```mermaid
 flowchart LR
-    Device[esenzX2 / IoT Controller] -->|1. Config & Details Request| ServerConfig[Server: /hw_reqv3]
+    Device[IoT Controller] -->|1. Config & Details Request| ServerConfig[Server: /hw_reqv3]
     Device -->|2. Sensor Telemetry Upload| ServerData[Server: /dataTransfer]
     ServerConfig -->|JSON Response| Device
     ServerData -->|ACK: >$IST=timestamp#| Device
