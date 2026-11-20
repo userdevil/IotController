@@ -1,12 +1,12 @@
 # IoT Controller — Backend Server Implementation Guide
 
-This document is a complete, self-contained engineering specification for building a backend server (Node.js, Python, Go, C#/.NET, Java, etc.) that interfaces with industrial IoT controllers based on Renesas RL78/G13 hardware.
+This guide describes the backend requests and responses implemented by this firmware. The device uses its cellular modem for server communication; it has no active Wi-Fi or Ethernet transport in this codebase.
 
 ---
 
 ## 1. System Architecture & Communication Flow
 
-The device communicates over **HTTP/1.1** via Cellular 4G (Quectel EC200U), Wi-Fi (Quectel FCM360W), or Ethernet (WIZnet W5500).
+The device communicates over HTTP/1.1 through its cellular modem (2G or 4G mode).
 
 ```mermaid
 sequenceDiagram
@@ -15,22 +15,22 @@ sequenceDiagram
     participant S as Backend Server
 
     Note over D,S: PHASE 1: Device Handshake & Provisioning
-    D->>S: GET /hw_reqv3?type=SERVER_DETAILS&KEY=<IMEI><br/>(or POST IMIENumber=<IMEI>)
-    S-->>D: HTTP 200 JSON with SYSTEM_ID (8-char hex) + Server Endpoints
+    D->>S: POST <SERVER_APP_REG> (form field IMIENumber=<IMEI>)
+    S-->>D: HTTP 200 text containing $SysID=<8-char hex>#
 
     Note over D,S: PHASE 2: System Configuration
-    D->>S: GET /hw_reqv3?type=SERVER_DETAILS&KEY=<SYSTEM_ID><br/>(or POST {"TYPE":"SERVER_DETAILS","SYSTEM_ID":"..."})
+    D->>S: POST <SERVER_APP_SYS_CONFIG> (JSON SERVER_DETAILS request)
     S-->>D: HTTP 200 JSON with intervals, parameter counts, endpoints
 
     Note over D,S: PHASE 3: DAQ Parameter Configuration
     loop Batches of parameters (1 to 10 per request)
-        D->>S: GET /hw_reqv3?type=PARA_CONFIG&KEY=<SYSTEM_ID>&FROM=xxx&TO=yyy<br/>(or POST {"TYPE":"PARA_CONFIG","SYS_ID":"...","FROM":"...","TO":"..."})
+        D->>S: POST <SERVER_APP_PARA_CONFIG> (JSON PARA_CONFIG request)
         S-->>D: HTTP 200 JSON with encoded parameter table array
     end
 
     Note over D,S: PHASE 4: Telemetry Upload (Periodic / Continuous)
-    loop Every Transmission Interval (e.g., every 60 seconds)
-        D->>S: POST /dataTransfer (Content-Type: application/x-www-form-urlencoded)<br/>Body: DATA000=<UPPERCASE_HEX_PAYLOAD>
+    loop At the configured transmission interval
+        D->>S: POST <SERVER_APP_REC_DATA> (Content-Type: application/x-www-form-urlencoded)<br/>Body: DATA000=<UPPERCASE_HEX_PAYLOAD>
         S-->>D: HTTP 200 with Time-Sync Token: >$IST=YYYYMMDDHHmmss#
     end
 ```
@@ -43,73 +43,45 @@ All routes must be served on the server's configured host and port (default HTTP
 
 ---
 
-### Endpoint 1: Device Registration (`GET /hw_reqv3` or Form `POST`)
+### Endpoint 1: Device Registration
 
-Called by the device on first boot or when its registration flag is cleared.
+On first registration, the firmware posts the form field `IMIENumber=<IMEI>` to the application stored in `ucSerAppReg` (default `IMIERegistrationPost.aspx`).
 
-* **Method:** `GET` (or `POST`)
-* **Path:** `/hw_reqv3` (or `/reg.aspx` / `/unitconfigpost.aspx`)
-* **Query Parameters (GET):**
-  * `type`: `"SERVER_DETAILS"`
-  * `KEY`: Device IMEI string (up to 15 numeric digits, e.g., `865510081833552`)
-* **Form Parameters (Legacy POST):**
-  * `IMIENumber`: Device IMEI string
+The response must contain the legacy token `$SysID=<8 hex characters>#`. The firmware extracts this token, stores the system ID, marks the device registered, and processes any additional legacy command fields in the response. Registration does **not** use the JSON configuration response parser.
 
-#### Expected Server Response (HTTP 200 JSON):
-The backend looks up or creates the device entry using the IMEI and returns an 8-character Little-Endian hexadecimal `SYSTEM_ID`:
+Example response body:
 
-```json
-{
-  "SYSTEM_ID": "5E0D0000",
-  "SERVER_ADD": "config.example.com",
-  "SERVER_PORT": "80",
-  "SERVER_PATH": "/",
-  "SER_APP_DATA": "dataTransfer",
-  "NO_OF_PARAMETERS": "00A",
-  "DATA_ACQ_MINUTES": "01",
-  "DATA_TRANS_MINUTES": "05"
-}
+```text
+$SysID=5E0D0000#
 ```
-
-> [!IMPORTANT]
-> `SYSTEM_ID` must be an **8-character little-endian hex string** of a 32-bit integer (e.g. integer `3422` $\to$ `0x00000D5E` $\to$ little-endian byte order: `5E 0D 00 00` $\to$ `"5E0D0000"`).
 
 ---
 
-### Endpoint 2: System Configuration (`GET /hw_reqv3` or JSON `POST`)
+### Endpoint 2: System Configuration (JSON POST)
 
 Called by the device after registration to obtain operational intervals and endpoint routes.
 
-* **Method:** `GET` (or `POST`)
-* **Path:** `/hw_reqv3` (or configured `SERVER_APP_SYS_CONFIG`)
-* **Query Parameters (GET):**
-  * `type`: `"SERVER_DETAILS"`
-  * `KEY`: The device's 8-character hex `SYSTEM_ID` (e.g., `5E0D0000`)
-* **JSON Body (POST):**
+* **Method:** `POST`
+* **Path:** the application stored in `ucSerAppSysConfig` (default `systemConfigPost.aspx`)
+* **JSON Body:**
   ```json
   {
     "TYPE": "SERVER_DETAILS",
-    "SYSTEM_ID": "5E0D0000"
+    "SYSTEM_ID": "00000D5E"
   }
   ```
 
 #### Expected Server Response (HTTP 200 JSON):
 ```json
 {
-  "SYSTEM_ID": "5E0D0000",
+  "SYSTEM_ID": "00000D5E",
   "SERVER_ADD": "config.example.com",
   "SERVER_PORT": "80",
   "SERVER_PATH": "/",
-  "SER_APP_DATA": "dataTransfer",
-  "NO_OF_PARAMETERS": "00A",
-  "DATA_ACQ_MINUTES": "01",
-  "DATA_TRANS_MINUTES": "05",
-  "MQTT_ADD": "",
-  "MQTT_PORT": "1883",
-  "MQTT_USN": "",
-  "MQTT_PWD": "",
-  "MQTT_TOPIC_PUB": "",
-  "MQTT_TOPIC_SUB": ""
+  "SER_APP_DATA": "realtimeDataPost.aspx",
+  "NO_OF_PARAMETERS": "02",
+  "DATA_ACQ_MINUTES": "00000001",
+  "DATA_TRANS_MINUTES": "00000001"
 }
 ```
 
@@ -117,36 +89,37 @@ Called by the device after registration to obtain operational intervals and endp
 | Field | Type | Description |
 |---|---|---|
 | `SYSTEM_ID` | String (8 hex) | Device System Identifier |
-| `SERVER_ADD` | String (max 49) | IP address or Hostname of backend |
+| `SERVER_ADD` | String (max 49) | Server address |
 | `SERVER_PORT` | String (max 6) | Backend HTTP port (`"80"`, `"8080"`, etc.) |
 | `SERVER_PATH` | String (max 49) | Base URI path prefix (default `"/"`) |
-| `SER_APP_DATA` | String (max 49) | URL path where telemetry is posted (e.g., `"dataTransfer"`) |
-| `NO_OF_PARAMETERS`| String (3 hex) | Active parameter count in hex (`"00A"` = 10, `"064"` = 100) |
-| `DATA_ACQ_MINUTES`| String (2 hex) | Polling frequency in minutes / intervals (e.g., `"01"` = 1 min) |
-| `DATA_TRANS_MINUTES`| String (2 hex) | Telemetry upload frequency (e.g., `"05"` = 5 min) |
+| `SER_APP_DATA` | String | Telemetry endpoint application name (default `realtimeDataPost.aspx`) |
+| `NO_OF_PARAMETERS` | Hex string | At least two uppercase hex digits; firmware reads the first two (e.g. `02` = 2); max 200 entries |
+| `DATA_ACQ_MINUTES` | Hex string | Eight-digit uppercase hex interval (e.g. `00000001` = 1) |
+| `DATA_TRANS_MINUTES` | Hex string | Eight-digit uppercase hex interval (e.g. `00000001` = 1) |
+
+The firmware requires the `SYSTEM_ID` string to match the registered ID and accepts `SERVER_ADD`, `SERVER_PORT`, `SERVER_PATH`, `SER_APP_DATA` (or the alias `SERVER_APP_DATA`), `NO_OF_PARAMETERS`, `DATA_ACQ_MINUTES`, and `DATA_TRANS_MINUTES`. Other response properties are ignored. The parameter count is read from its first two hex digits. Interval strings are converted to legacy tokens and the parser reads their final two hex digits. The parameter count is capped at 200 during initialization.
 
 ---
 
-### Endpoint 3: DAQ Parameter Configuration (`GET /hw_reqv3` or JSON `POST`)
+### Endpoint 3: DAQ Parameter Configuration (JSON POST)
 
 Downloads the sensor / Modbus registers table into the device's EEPROM.
 
-* **Method:** `GET` (or `POST`)
-* **Path:** `/hw_reqv3` (or configured `SERVER_APP_PARA_CONFIG`)
-* **Query Parameters (GET):**
-  * `type`: `"PARA_CONFIG"`
-  * `KEY`: `<SYSTEM_ID>`
-  * `START`: 3-digit decimal starting parameter index (e.g., `000`)
-  * `COUNT`: Number of parameters requested in this batch (e.g., `010`)
-* **JSON Body (POST):**
+* **Method:** `POST`
+* **Path:** the application stored in `ucSerAppParaConfig` (default `paraconfigPost.aspx`)
+* **JSON Body:**
   ```json
   {
     "TYPE": "PARA_CONFIG",
-    "SYS_ID": "5E0D0000",
+    "SYS_ID": "00000D5E",
     "FROM": "000",
     "TO": "009"
   }
   ```
+
+The firmware requests up to 10 entries per batch. `FROM` and `TO` are three-digit decimal indices. The firmware sends `SYS_ID` as an eight-character uppercase hexadecimal number, such as `00000D5E` for ID `0x00000D5E`.
+
+Each entry in `PARA` is a one-element array holding the compact parameter string. The fixed header is 30 characters: source (2 decimal digits), type (2 decimal digits), RS485 settings (6 digits), timeout (4 decimal digits), multiplier (8 hex characters), and addition factor (8 hex characters). At offset 30 the optional RS485 request hex begins; `#` separates it from the parameter name. Built-in source values are `00`–`11`, and `12` selects RS485. The firmware stores at most 29 request characters and 9 name characters. There are no parameter-level IP-address or TCP-port fields in this format.
 
 #### Expected Server Response (HTTP 200 JSON):
 ```json
@@ -155,48 +128,48 @@ Downloads the sensor / Modbus registers table into the device's EEPROM.
   "FROM": "000",
   "TO": "001",
   "PARA": [
-    ["140001300030003F80000000000000C0A8007201F6010300000002C40B#Active Power"],
-    ["140001300030003F80000000000000C0A8007201F601030002000265CB#Reactive Power"]
+    ["120001300030003F80000000000000010300000002C40B#Active Power"],
+    ["120001300030003F8000000000000001030002000265CB#Reactive Power"]
   ]
 }
 ```
 
 #### Compact Parameter String Specification:
-The string within each `PARA` array entry has a **42-character fixed header**, followed by the Modbus query packet and parameter name delimited by `#`:
+The firmware parses a **30-character fixed header**, followed by a hexadecimal RS485 request packet and parameter name delimited by `#`.
 
-$$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_{4}\underbrace{\text{D}}_{5}\underbrace{\text{B}}_{6}\underbrace{\text{b}}_{7}\underbrace{\text{P}}_{8}\underbrace{\text{S}}_{9}\underbrace{\text{TOUT}}_{10-13}\underbrace{\text{MUL\_HEX}}_{14-21}\underbrace{\text{ADD\_HEX}}_{22-29}\underbrace{\text{IP\_HEX}}_{30-37}\underbrace{\text{PORT\_HEX}}_{38-41}\underbrace{\text{MODBUS\_REQ}}_{42\dots\#}\text{\#}\underbrace{\text{NAME}}_{\dots\text{end}}$$
+$$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_{4}\underbrace{\text{D}}_{5}\underbrace{\text{B}}_{6}\underbrace{\text{b}}_{7}\underbrace{\text{P}}_{8}\underbrace{\text{S}}_{9}\underbrace{\text{TOUT}}_{10-13}\underbrace{\text{MUL\_HEX}}_{14-21}\underbrace{\text{ADD\_HEX}}_{22-29}\underbrace{\text{MODBUS\_REQ}}_{30\dots\#}\text{\#}\underbrace{\text{NAME}}_{\dots\text{end}}$$
 
 | Offset | Length | Name | Encoding | Description |
 |---|---|---|---|---|
-| `[00..01]` | 2 | `ucSource` | 2 Decimal Digits | `01`: On-board ADC<br>`12`: RS485 Port 1 (RTU)<br>`13`: RS485 Port 2 (RTU)<br>`14`: Modbus-TCP (W5500) |
-| `[02..03]` | 2 | `ucType` | 2 Decimal Digits | Sensor type code (`00` = Standard DAQ, `01` = Power meter) |
-| `[04]` | 1 | `ucDataFormat` | 1 Decimal Digit | `0`: 32-bit Float, `1`: 16-bit Int, `2`: 32-bit Int, etc. |
-| `[05]` | 1 | `ucDataType` | 1 Decimal Digit | Modbus endianness / sign representation |
+| `[00..01]` | 2 | `ucParaSource` | 2 Decimal Digits | `00`: no source; `01`: supply; `02`: temperature; `03`–`06`: V1–V4; `07`–`08`: I1–I2; `09`: digital input; `10`: frequency; `11`: pulse count; `12`: RS485. |
+| `[02..03]` | 2 | `ucParaType` | 2 Decimal Digits | Firmware processing code: `01` thermistor, `02` threshold, `04`–`23` stored-value slots, `25` special Modbus record. |
+| `[04]` | 1 | `ucRS485Mode` | 1 Decimal Digit | RS485 mode passed to the Modbus handler |
+| `[05]` | 1 | `ucRS485DataType` | 1 Decimal Digit | Data type passed to the Modbus handler |
 | `[06]` | 1 | `ucBaudRate` | 1 Decimal Digit | `0`: 9600, `1`: 19200, `2`: 38400, `3`: 115200, `4`: 4800, `5`: 2400 |
 | `[07]` | 1 | `ucDataBits` | 1 Decimal Digit | `0`: 8 bits, `1`: 7 bits |
 | `[08]` | 1 | `ucParity` | 1 Decimal Digit | `0`: None, `1`: Odd, `2`: Even |
 | `[09]` | 1 | `ucStopBits` | 1 Decimal Digit | `0`: 1 stop bit, `1`: 2 stop bits |
 | `[10..13]` | 4 | `uiTimeout` | 4 Decimal Digits | Response timeout in ms (e.g. `3000` = 3000 ms) |
-| `[14..21]` | 8 | `flMulFactor` | 8 Hex Chars (Big-Endian) | IEEE-754 float multiplier (`3F800000` = `1.0f`) |
-| `[22..29]` | 8 | `flAddFactor` | 8 Hex Chars (Big-Endian) | IEEE-754 float adder offset (`00000000` = `0.0f`) |
-| `[30..37]` | 8 | `ucIpAddr` | 8 Hex Chars | IP address (e.g. `C0A80072` $\to$ `192.168.0.114`) |
-| `[38..41]` | 4 | `uiPort` | 4 Hex Chars (Big-Endian) | TCP port number (e.g. `01F6` $\to$ `502`) |
-| `[42..#)` | Var | `ucReqPacket` | Hex String | Hex-encoded Modbus request (Slave ID + FC + Reg + Count + CRC) |
+| `[14..21]` | 8 | `fMultiplyFactor` | 8 Hex Chars (Big-Endian) | IEEE-754 multiplier; firmware reverses byte order when loading it (`3F800000` = `1.0f`) |
+| `[22..29]` | 8 | `fAdditionFactor` | 8 Hex Chars (Big-Endian) | IEEE-754 addition factor; firmware reverses byte order when loading it (`00000000` = `0.0f`) |
+| `[30..#)` | Var | `ucRS485Packet` | Hex String | RS485 request packet. The firmware stores at most 29 characters (15 bytes) and reads source `12` through RS485. |
 | `#` | 1 | Delimiter | Literal `#` | Separator |
-| `(#..end]` | Var | `ucParaName` | ASCII String | Display name of the parameter |
+| `(#..end]` | Var | `ucParaStr` | ASCII String | Display name; firmware stores at most 9 characters. Other parameter fields are zeroed when this compact record is loaded. |
+
+The compact parser currently handles built-in source IDs `00`–`11` and RS485 source `12`; source IDs for a second RS485 port or Modbus TCP are not handled by `acquireData()` in this firmware.
 
 ---
 
-### Endpoint 4: Telemetry / Sensor Data Ingestion (`POST /dataTransfer`)
+### Endpoint 4: Telemetry / Sensor Data Ingestion (`POST`)
 
 Uploaded periodically by the device.
 
 * **Method:** `POST`
-* **Path:** `/<SER_APP_DATA>` (default `/dataTransfer`)
+* **Path:** the application stored in `ucSerAppRecData` (default `/realtimeDataPost.aspx`)
 * **Headers:** `Content-Type: application/x-www-form-urlencoded`
 * **Body:**
   ```http
-  DATA000=050000005E0D000019112615300028010000010000000200000042487AE141AC0000
+  DATA000=050000005E0D0000191126153000280100000100000002000000E17A48420000AC41
   ```
 
 #### Wire Record Payload Structure:
@@ -207,22 +180,22 @@ $$\text{DATA000}=\underbrace{\text{HDR}_{52\text{ hex chars}}}_{\text{26-byte Wi
 #### A. 26-Byte Wire Header (First 52 Hex Characters):
 | Hex Index | Length | Name | Type | Description |
 |---|---|---|---|---|
-| `00..07` | 8 chars (4 B) | `WriteCounter` | UINT32 (LE) | Incremental record sequence number saved in flash |
+| `00..07` | 8 chars (4 B) | `WriteCounter` | UINT32 (LE) | Flash write index; incremented after each record |
 | `08..15` | 8 chars (4 B) | `SystemID` | UINT32 (LE) | 32-bit hardware device System ID |
-| `16..27` | 12 chars (6 B)| `Timestamp` | 6 BCD Bytes | Date & Time: `DD MM YY HH MM SS` |
-| `28..29` | 2 chars (1 B) | `SignalStrength` | INT8 | GSM / Wi-Fi signal level in dBm |
-| `30..31` | 2 chars (1 B) | `Relay1` | Byte | Relay 1 state (`0x00`/`0x01` or `'0'`/`'1'`) |
-| `32..33` | 2 chars (1 B) | `Relay2` | Byte | Relay 2 state (`0x00`/`0x01` or `'0'`/`'1'`) |
-| `34..35` | 2 chars (1 B) | `Relay3` | Byte | Relay 3 state (`0x00`/`0x01` or `'0'`/`'1'`) |
-| `36..43` | 8 chars (4 B) | `TxCounter` | UINT32 (LE) | Count of successful uploads so far |
+| `16..27` | 12 chars | `Timestamp` | Decimal digit pairs | Date & Time: `DDMMYYHHMMSS` |
+| `28..29` | 2 decimal characters | `SignalStrength` | Decimal text | `AT+CSQ` signal-quality index, clamped to `02` above 40; not dBm |
+| `30..31` | 2 ASCII digits | `Relay1` | ASCII | Digital input `P10.2` (`'0'` or `'1'`) |
+| `32..33` | 2 ASCII digits | `Relay2` | ASCII | Digital input `P0.4` (`'0'` or `'1'`) |
+| `34..35` | 2 ASCII digits | `Relay3` | ASCII | Digital input `P13.0` (`'0'` or `'1'`) |
+| `36..43` | 8 chars (4 B) | `AcquisitionCounter` | UINT32 (LE) | `ulDataAcqCntr` acquisition counter |
 | `44..51` | 8 chars (4 B) | `ParamCount` | UINT32 (LE) | Count ($N$) of sensor parameters following in body |
 
 #### B. Telemetry Values ($N \times 8$ Hex Characters):
 Following the 52 header characters, each parameter value occupies **8 hex characters** representing a **32-bit IEEE-754 Little-Endian float**:
 
-* **Normal Float:** e.g., `42487AE1` (in Little-Endian bytes: `E1 7A 48 42` = `50.12f`).
-* **Offline / Timeout Sentinel:** `-2222.0f` $\to$ `0x00, 0xE0, 0x0A, 0xC5` (Hex string: `C50AE000` or `00E00AC5`).
-* **Communication Error / Bad CRC Sentinel:** `-3333.0f` $\to$ `0x00, 0x50, 0x50, 0xC5` (Hex string: `C5505000` or `005050C5`).
+* **Normal Float:** `E17A4842` represents `50.12f` as four little-endian bytes.
+* **Offline / Timeout Sentinel:** `-2222.0f` is sent as `00E00AC5` (little-endian float bytes).
+* **Communication Error / Bad CRC Sentinel:** `-3333.0f` is sent as `005050C5` (little-endian float bytes).
 
 #### Server Response Requirement:
 The device requires a specific acknowledgment string containing the Indian Standard Time (IST) to synchronize its on-board MCP7940 RTC:
@@ -246,13 +219,16 @@ The device requires a specific acknowledgment string containing the Indian Stand
 ```sql
 -- 1. Devices Table
 CREATE TABLE devices (
-    system_id VARCHAR(8) PRIMARY KEY,      -- Little-endian hex string e.g. '5E0D0000'
+    system_id VARCHAR(8) PRIMARY KEY,      -- Wire-order hex string e.g. '5E0D0000'
     imei VARCHAR(15) UNIQUE NOT NULL,       -- Device hardware IMEI
     name VARCHAR(100),
     server_add VARCHAR(50) DEFAULT 'config.example.com',
     server_port VARCHAR(6) DEFAULT '80',
     server_path VARCHAR(50) DEFAULT '/',
-    data_app VARCHAR(50) DEFAULT 'dataTransfer',
+    registration_app VARCHAR(38) DEFAULT 'IMIERegistrationPost.aspx',
+    system_config_app VARCHAR(38) DEFAULT 'systemConfigPost.aspx',
+    parameter_config_app VARCHAR(38) DEFAULT 'paraconfigPost.aspx',
+    data_app VARCHAR(38) DEFAULT 'realtimeDataPost.aspx',
     acq_interval_min INT DEFAULT 1,
     trans_interval_min INT DEFAULT 5,
     last_seen_at TIMESTAMP WITH TIME ZONE,
@@ -263,17 +239,20 @@ CREATE TABLE devices (
 CREATE TABLE device_parameters (
     id SERIAL PRIMARY KEY,
     system_id VARCHAR(8) REFERENCES devices(system_id) ON DELETE CASCADE,
-    param_index INT NOT NULL,              -- 0 to 149
-    param_name VARCHAR(50) NOT NULL,
-    source_type INT NOT NULL,              -- 1=ADC, 12=RS485-1, 13=RS485-2, 14=Modbus-TCP
-    data_format INT DEFAULT 0,
+    param_index INT NOT NULL,              -- 0 to 199
+    param_name VARCHAR(9) NOT NULL,         -- firmware stores at most 9 characters
+    source_type INT NOT NULL,              -- built-in source 0-11 or RS485 source 12
+    para_type INT DEFAULT 0,
+    rs485_mode INT DEFAULT 0,
+    rs485_data_type INT DEFAULT 0,
     baud_rate INT DEFAULT 3,
+    data_bits INT DEFAULT 0,
+    parity INT DEFAULT 0,
+    stop_bits INT DEFAULT 0,
     timeout_ms INT DEFAULT 3000,
     mul_factor REAL DEFAULT 1.0,
     add_factor REAL DEFAULT 0.0,
-    ip_address INET,
-    port INT DEFAULT 502,
-    modbus_req_hex VARCHAR(100),
+    modbus_req_hex VARCHAR(29),             -- firmware stores at most 29 hex characters
     UNIQUE(system_id, param_index)
 );
 
@@ -283,7 +262,7 @@ CREATE TABLE telemetry_records (
     system_id VARCHAR(8) REFERENCES devices(system_id),
     device_timestamp TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     write_counter BIGINT NOT NULL,
-    tx_counter BIGINT NOT NULL,
+    acquisition_counter BIGINT NOT NULL,
     signal_strength INT,
     relay1_status BOOLEAN,
     relay2_status BOOLEAN,
@@ -319,7 +298,7 @@ Run:
     python server.py
 """
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, JSONResponse
 from datetime import datetime
 import struct
@@ -350,11 +329,12 @@ def decode_data000_payload(hex_str: str):
     second = parse_bcd(raw[13])
     timestamp = datetime(year, month, day, hour, minute, second)
 
-    signal_strength = struct.unpack("b", raw[14:15])[0]
+    # Firmware formats signal strength as two decimal characters in the hex text.
+    signal_strength = int(hex_str[28:30], 10)
     relay1 = raw[15] in (1, ord('1'))
     relay2 = raw[16] in (1, ord('1'))
     relay3 = raw[17] in (1, ord('1'))
-    tx_cnt = struct.unpack("<I", raw[18:22])[0]
+    acquisition_cnt = struct.unpack("<I", raw[18:22])[0]
     param_count = struct.unpack("<I", raw[22:26])[0]
 
     # Sensor values parsing (param_count * 4 bytes float LE)
@@ -383,44 +363,46 @@ def decode_data000_payload(hex_str: str):
         "write_cnt": write_cnt,
         "sys_id": sys_id_hex,
         "timestamp": timestamp.isoformat(),
-        "signal_strength_dbm": signal_strength,
+        "signal_strength": signal_strength,
         "relays": [relay1, relay2, relay3],
-        "tx_cnt": tx_cnt,
+        "acquisition_cnt": acquisition_cnt,
         "param_count": param_count,
         "values": values
     }
 
 
 # =====================================================================
-# 1. Config & Provisioning Handlers (/hw_reqv3)
+# 1. Config & Provisioning Handlers
 # =====================================================================
-@app.get("/hw_reqv3")
-@app.post("/hw_reqv3")
+@app.post("/IMIERegistrationPost.aspx")
+async def register_device(request: Request):
+    form_data = await request.form()
+    imei = form_data.get("IMIENumber")
+    if not imei:
+        return PlainTextResponse("Bad Request: missing IMIENumber", status_code=400)
+    # Look up or create the device using the IMEI, then return its assigned ID.
+    return PlainTextResponse("$SysID=5E0D0000#", status_code=200)
+
+
+@app.post("/systemConfigPost.aspx")
+@app.post("/paraconfigPost.aspx")
 async def handle_hw_request(request: Request):
-    params = dict(request.query_params)
-    
-    # Handle POST JSON body if present
-    if request.method == "POST":
-        try:
-            body_json = await request.json()
-            params.update(body_json)
-        except Exception:
-            pass
+    params = await request.json()
 
     req_type = params.get("type") or params.get("TYPE")
-    key = params.get("KEY") or params.get("SYS_ID")
+    key = params.get("SYSTEM_ID") or params.get("SYS_ID")
 
     # 1. SYSTEM / SERVER CONFIGURATION
     if req_type == "SERVER_DETAILS":
         return JSONResponse({
-            "SYSTEM_ID": "5E0D0000",
+            "SYSTEM_ID": "00000D5E",
             "SERVER_ADD": "192.168.0.100",
             "SERVER_PORT": "8080",
             "SERVER_PATH": "/",
-            "SER_APP_DATA": "dataTransfer",
-            "NO_OF_PARAMETERS": "002",
-            "DATA_ACQ_MINUTES": "01",
-            "DATA_TRANS_MINUTES": "01"
+            "SER_APP_DATA": "realtimeDataPost.aspx",
+            "NO_OF_PARAMETERS": "02",
+            "DATA_ACQ_MINUTES": "00000001",
+            "DATA_TRANS_MINUTES": "00000001"
         })
 
     # 2. PARAMETERS CONFIGURATION
@@ -430,15 +412,16 @@ async def handle_hw_request(request: Request):
         
         # Sample parameters
         sample_params = [
-            "140001300030003F80000000000000C0A8007201F6010300000002C40B#Active Power",
-            "140001300030003F80000000000000C0A8007201F601030002000265CB#Reactive Power"
+            "120001300030003F80000000000000010300000002C40B#Active P",
+            "120001300030003F8000000000000001030002000265CB#Reactive"
         ]
         
         selected = [[p] for p in sample_params[from_idx:to_idx+1]]
+        returned_to = from_idx + len(selected) - 1
         return JSONResponse({
             "TYPE": "PARA_CONFIG",
             "FROM": f"{from_idx:03d}",
-            "TO": f"{to_idx:03d}",
+            "TO": f"{returned_to:03d}",
             "PARA": selected
         })
 
@@ -446,9 +429,9 @@ async def handle_hw_request(request: Request):
 
 
 # =====================================================================
-# 2. Telemetry Ingestion Handler (/dataTransfer)
+# 2. Telemetry Ingestion Handler
 # =====================================================================
-@app.post("/dataTransfer")
+@app.post("/realtimeDataPost.aspx")
 async def handle_telemetry(request: Request):
     form_data = await request.form()
     data_payload = form_data.get("DATA000")
@@ -459,7 +442,7 @@ async def handle_telemetry(request: Request):
     try:
         decoded = decode_data000_payload(data_payload)
         print(f"[TELEMETRY RECEIVED] Device: {decoded['sys_id']} @ {decoded['timestamp']}")
-        print(f"  Counters: Write={decoded['write_cnt']}, Tx={decoded['tx_cnt']}")
+        print(f"  Counters: Write={decoded['write_cnt']}, Acquisition={decoded['acquisition_cnt']}")
         print(f"  Values ({len(decoded['values'])}): {decoded['values']}")
 
         # Build IST Clock-Sync ACK token required by firmware
@@ -479,13 +462,84 @@ if __name__ == "__main__":
 
 ---
 
+## Relay module configuration and MQTT control
+
+External relay modules are configured independently from the controller’s sensor parameters. The firmware downloads this endpoint after the parameter configuration succeeds:
+
+```http
+POST /relayModulesConfigPost.aspx
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "TYPE": "RELAY_MODULE_CONFIG",
+  "SYSTEM_ID": "00000D5E"
+}
+```
+
+Return a JSON object using this schema. `MODULES` may contain zero through 16 modules; each configured module uses eight channels. The RTU line is fixed to 9600 baud, 8 data bits, no parity, one stop bit. `coilStart` is the zero-based coil address of channel 1.
+
+```json
+{
+  "TYPE": "RELAY_MODULE_CONFIG",
+  "SYSTEM_ID": "00000D5E",
+  "MQTT_BROKER": "broker.example.net",
+  "MQTT_PORT": 1883,
+  "MQTT_CLIENT_ID": "device-00000D5E",
+  "MQTT_USERNAME": "device-user",
+  "MQTT_PASSWORD": "device-secret",
+  "MQTT_COMMAND_TOPIC": "devices/00000D5E/relay/set",
+  "MQTT_STATUS_TOPIC": "devices/00000D5E/relay/status",
+  "MODULES": [
+    { "slaveId": 1, "channels": 8, "coilStart": 0 },
+    { "slaveId": 2, "channels": 8, "coilStart": 0 }
+  ]
+}
+```
+
+`SYSTEM_ID` must match the requesting device. Each `slaveId` must be unique among the configured modules, in the Modbus RTU range 1–247, and distinct from every other slave on the shared RS485 bus. `channels` is currently required to be 8; `coilStart` plus seven must fit in the 16-bit coil address range. The firmware persists this response separately in external EEPROM. An invalid response leaves the separate download flag set so the device retries the endpoint.
+
+Publish relay commands to `MQTT_COMMAND_TOPIC` as JSON. `module` identifies the configured module by its one-byte Modbus slave ID written as two hexadecimal characters; `channel` is decimal 1–8.
+
+```json
+{
+  "commandId": "cmd-1042",
+  "module": "01",
+  "channel": "03",
+  "state": "ON"
+}
+```
+
+At startup, the firmware configures the modem’s MQTT receive mode and MQTT 3.1.1, opens the configured broker, authenticates with the supplied client credentials, and subscribes to the command topic at QoS 1. It handles modem receive and disconnect URCs and runs a disconnect/close/reconnect sequence after failures. Use `state` values `ON` and `OFF`. The device maps the request to the module’s configured coil address and writes it using Modbus RTU function 05 (`FF00` for ON, `0000` for OFF). It checks the Modbus response echo before reporting success. The device handles one channel command at a time and waits for its active sensor bus transaction to finish before issuing a write. Invalid modules, channels, topics, or states are ignored.
+
+For a command with an optional `commandId`, the device publishes the result to `MQTT_STATUS_TOPIC` using the modem’s fixed-length `QMTPUBEX` command at QoS 1:
+
+```json
+{
+  "commandId": "cmd-1042",
+  "module": "01",
+  "channel": "3",
+  "state": "ON",
+  "result": "OK"
+}
+```
+
+`result` is `ERROR` when the Modbus response fails or does not echo the requested FC05 frame. Keep command and status topic ACLs restricted to this device. The firmware currently uses a non-TLS MQTT connection; configure a broker endpoint reachable over the cellular data connection.
+
+The existing HTTP exchange transports the downloaded broker credentials, so protect the endpoint with the deployment’s device-authentication and TLS strategy where available. The modem MQTT connection currently uses the broker and credentials above without a TLS AT-command setup.
+
 ## 5. Testing & Verification Guide
 
 You can test this backend server immediately using standard `curl` commands.
 
 ### Test 1: Fetch System Configuration
 ```bash
-curl -X GET "http://localhost:8080/hw_reqv3?type=SERVER_DETAILS&KEY=5E0D0000"
+curl -X POST "http://localhost:8080/systemConfigPost.aspx" \
+     -H "Content-Type: application/json" \
+     -d '{"TYPE":"SERVER_DETAILS","SYSTEM_ID":"00000D5E"}'
 ```
 **Expected Response:** JSON with `SYSTEM_ID`, `SERVER_ADD`, `NO_OF_PARAMETERS`, etc.
 
@@ -493,7 +547,9 @@ curl -X GET "http://localhost:8080/hw_reqv3?type=SERVER_DETAILS&KEY=5E0D0000"
 
 ### Test 2: Fetch Parameter Configuration
 ```bash
-curl -X GET "http://localhost:8080/hw_reqv3?type=PARA_CONFIG&KEY=5E0D0000&FROM=000&TO=001"
+curl -X POST "http://localhost:8080/paraconfigPost.aspx" \
+     -H "Content-Type: application/json" \
+     -d '{"TYPE":"PARA_CONFIG","SYS_ID":"00000D5E","FROM":"000","TO":"001"}'
 ```
 **Expected Response:** JSON containing the `"PARA"` array with compact strings.
 
@@ -501,11 +557,11 @@ curl -X GET "http://localhost:8080/hw_reqv3?type=PARA_CONFIG&KEY=5E0D0000&FROM=0
 
 ### Test 3: Upload Sample Telemetry Record
 The following sample payload contains:
-* Header: Write Cnt = 1, SysID = `5E0D0000`, Timestamp = `19/11/26 15:30:00`, Tx Cnt = 1, Params = 2
-* Body: Param 0 = `50.12f` (`42487AE1`), Param 1 = `100.0f` (`42C80000`)
+* Header: Write Cnt = 1, SysID = `5E0D0000`, Timestamp = `19/11/26 15:30:00`, acquisition counter = 1, Params = 2
+* Body: Param 0 = `50.12f` (`E17A4842`), Param 1 = `100.0f` (`0000C842`)
 
 ```bash
-curl -X POST "http://localhost:8080/dataTransfer" \
+curl -X POST "http://localhost:8080/realtimeDataPost.aspx" \
      -H "Content-Type: application/x-www-form-urlencoded" \
      -d "DATA000=010000005E0D0000191126153000280100000100000002000000E17A48420000C842"
 ```

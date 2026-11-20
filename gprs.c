@@ -21,6 +21,7 @@ UINT8 ucNetworkStatus;
 UINT8 ucSIMStatus;
 UINT8 ucGPRSConStatus;
 UINT8 ucGPRSDataTranferFlag;
+UINT8 ucGPRSHttpTransferBusy;
 UINT8 ucDataTransferSuccess;
 UINT8 ucGPRSSMState;
 
@@ -144,12 +145,14 @@ void gprsTranferDataToServer4G(unsigned char* pucSMSStart, UINT8* pucTransDataBu
 	
 	if(*pucSMSStart==0)
 	{
+		ucGPRSHttpTransferBusy=0;
 		
 		ucRetryCntr=0;
 		ucDataTransferSuccess=0;
 		
 		return;	
 	}
+	ucGPRSHttpTransferBusy=1;
 	ucGPRSSMState=ucState;
 	if(ucGPRSSMStateMax<ucGPRSSMState)
 		ucGPRSSMStateMax=ucGPRSSMState;

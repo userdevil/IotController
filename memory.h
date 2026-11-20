@@ -24,6 +24,7 @@
 #define EEPROM_LOC_DATA_CNTR		120	//4 bytes
 #define EEPROM_LOC_TRANS_INTERVAL	124	//4 bytes
 #define EEPROM_LOC_INTERNET_SOURCE	128	//1 bytes
+#define EEPROM_LOC_DL_RELAY_MODULE_CONFIG 129 //1 byte
 
 #define EEPROM_LOC_STORE_PARA_1_LOC     130   	//4 bytes    
 #define EEPROM_LOC_STORE_PARA_2_LOC     134	//4 bytes     
@@ -171,6 +172,7 @@ extern UINT8 	ucAppType;
 extern UINT32 	ulSystemNoOfParameters;
 extern UINT8 	ucSystemDownloadUnitConfig;
 extern UINT8 	ucSystemDownloadParaConfig;
+extern UINT8 	ucSystemDownloadRelayModuleConfig;
 extern UINT32 	ulDataAcqCntr;
 extern UINT32 	ulTransmissionInterwal;
 extern UINT32 	ulAcqInterwal;

@@ -28,6 +28,7 @@ UINT8 	ucAppType;
 UINT32 	ulSystemNoOfParameters;
 UINT8 	ucSystemDownloadUnitConfig;
 UINT8 	ucSystemDownloadParaConfig;
+UINT8 	ucSystemDownloadRelayModuleConfig;
 UINT32 	ulDataAcqCntr;
 UINT32 	ulTransmissionInterwal;
 UINT32 	ulAcqInterwal;
@@ -200,6 +201,8 @@ void readDataFromMemory(void)
 		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_DL_UNIT_CONIG,ucSystemDownloadUnitConfig);
 		ucSystemDownloadParaConfig=1;
 		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_DL_PARA_CONIG,ucSystemDownloadParaConfig);
+		ucSystemDownloadRelayModuleConfig=1;
+		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_DL_RELAY_MODULE_CONFIG,ucSystemDownloadRelayModuleConfig);
 		ulDataAcqCntr=0;
 		writeExtEEPROMLong(EEPROM_ADD,EEPROM_LOC_DATA_CNTR,ulDataAcqCntr);
 		ulTransmissionInterwal=5;
@@ -451,6 +454,9 @@ void readDataFromMemory(void)
 		if(ucSystemDownloadParaConfig>1)
 			ucSystemDownloadParaConfig=1;
 	}
+	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_DL_RELAY_MODULE_CONFIG,&ucSystemDownloadRelayModuleConfig);
+	if(ucSystemDownloadRelayModuleConfig>1)
+		ucSystemDownloadRelayModuleConfig=1;
 	
 	if(ulSystemNoOfParameters<25)
 	{

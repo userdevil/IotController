@@ -67,6 +67,7 @@ Includes
 #include "data.h"
 #include "ui.h"
 #include "spi.h"
+#include "relaymodule.h"
 
 /* End user code. Do not edit comment generated here */
 #include "r_cg_userdefine.h"
@@ -321,6 +322,10 @@ void main(void)
 			
 		downloadParaConfig();
 	}
+	else if(ucSystemDownloadRelayModuleConfig==1)
+	{
+		downloadRelayModuleConfig();
+	}
 	else
 	{
 		if(ucSendSMSFlag==1)
@@ -332,6 +337,7 @@ void main(void)
 			sendStoredDataToserver();	
 		}
 	}
+	relayModuleService();
 	
 	if(ucCheckRelayOperation==1)
 	{
@@ -343,7 +349,7 @@ void main(void)
 	
 
 	//acq data
-	if( (ucAcqDataDisable==0) && (ucBaordTestInProgress==0) && (ucRS485BusFlag==RS485_CON_DATA_ACQ) &&(ucSystemRegistrationStatus==1) && (ucSystemDownloadUnitConfig==0) && (ucSystemDownloadParaConfig==0)  )
+	if( (ucAcqDataDisable==0) && (ucBaordTestInProgress==0) && (ucRS485BusFlag==RS485_CON_DATA_ACQ) &&(ucSystemRegistrationStatus==1) && (ucSystemDownloadUnitConfig==0) && (ucSystemDownloadParaConfig==0) && (ucSystemDownloadRelayModuleConfig==0)  )
 		acquireData(&ucPraAcqFlag);
 	
 	receiveSMS();

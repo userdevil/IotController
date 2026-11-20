@@ -1,22 +1,16 @@
 # IoT Control — JSON Specification & Command Reference
 
 **Firmware Target:** Renesas RL78/G13 (`R5F100PL`)  
-**Architecture:** Bare-metal, interrupt-driven, multi-transport (Ethernet W5500, Wi-Fi FCM360W, 4G EC200U)  
-**Document Scope:** Full JSON Schemas and field definitions for **Config Download** (Server $\to$ Device) and **Debug / Maintenance Commands** (Console / UART / Network).
+**Architecture:** Bare-metal, interrupt-driven, cellular-modem HTTP transport (EC200U)
+**Document Scope:** JSON schemas and command details documented here must be interpreted against the firmware implementation. Configuration download uses the cellular HTTP client.
 
 ---
 
 ## 1. Transport & Framing Specification
 
-* **Port:** UART2 (Debug Console) / Ethernet (Socket) / Wi-Fi / 4G Modem.
+* **Port:** UART2 (Debug Console) / cellular modem HTTP.
 * **UART Configuration:** Default `115200 bps`, `8` data bits, `No` parity, `1` stop bit (`8N1`).
-* **Framing:** Flat JSON object per transmission, strictly terminated with a newline (`\n` or `\r\n`).
-* **Buffer Limit:** Maximum 512 bytes per command packet (`UART_DEBUG_REC_BUFFER_SIZE`).
-* **Value Field Length:** Maximum 64 characters per extracted token (`JSON_VALUE_MAX_LEN`).
-* **General Response Envelopes:**
-  * **Success:** `{"status":"ok"}` or `{"status":"ok","msg":"<detail>"}`
-  * **Error:** `{"status":"err","msg":"<reason>"}`
-  * **Queries (`REQ`):** Dedicated payload object returned directly.
+* **Debug input:** The firmware recognizes JSON `REQ` objects and legacy `$COMMAND#` tokens. The JSON debug interface handles `GET_SYS_INFO` and `PARA_VALUE`.
 
 ---
 
@@ -37,7 +31,7 @@ flowchart TD
 
 ### A. System Configuration (`SERVER_DETAILS` / `SYS_Config`)
 
-Downloaded via HTTP GET `hw_reqv3?type=SERVER_DETAILS&KEY=<SYS_ID_HEX>` or injected over the serial terminal. Keys are decoded independently, allowing selective updates.
+Downloaded by HTTP POST to the system-configuration application path. The device sends `{"TYPE":"SERVER_DETAILS","SYSTEM_ID":"<8-char hex>"}` and applies a JSON response only when `SYSTEM_ID` matches the registered device. The active firmware maps supported response fields to legacy command tokens internally.
 
 #### JSON Schema
 ```json
@@ -48,7 +42,7 @@ Downloaded via HTTP GET `hw_reqv3?type=SERVER_DETAILS&KEY=<SYS_ID_HEX>` or injec
   "properties": {
     "SYSTEM_ID": {
       "type": "string",
-      "description": "8-character little-endian hex string representing 32-bit system ID (e.g., '5E0D0000'). Setting this marks the device as registered.",
+      "description": "8-character hexadecimal 32-bit system ID, emitted in most-significant-digit-first order (e.g., '00000D5E' for numeric ID 3422)",
       "maxLength": 8
     },
     "SERVER_ADD": {
@@ -73,27 +67,22 @@ Downloaded via HTTP GET `hw_reqv3?type=SERVER_DETAILS&KEY=<SYS_ID_HEX>` or injec
     },
     "NO_OF_PARAMETERS": {
       "type": "string",
-      "description": "Total active DAQ parameter count in hexadecimal (e.g. '00A' = 10, '064' = 100)"
+      "description": "Hexadecimal count token; firmware reads the first two digits (e.g. '0A' = 10)",
+      "minLength": 2,
+      "maxLength": 8
     },
     "DATA_ACQ_MINUTES": {
       "type": "string",
-      "description": "Sensor acquisition polling interval in hexadecimal seconds/minutes"
+      "description": "Eight-digit uppercase hexadecimal interval value (e.g. '00000001' = 1)",
+      "minLength": 8,
+      "maxLength": 8
     },
     "DATA_TRANS_MINUTES": {
       "type": "string",
-      "description": "Server data upload interval in hexadecimal seconds/minutes"
-    },
-    "MQTT_ADD": { "type": "string", "maxLength": 49, "description": "MQTT Broker hostname/IP" },
-    "MQTT_PORT": { "type": "string", "maxLength": 6, "description": "MQTT Broker port (e.g. '1883')" },
-    "MQTT_USN": { "type": "string", "maxLength": 24, "description": "MQTT Username" },
-    "MQTT_PWD": { "type": "string", "maxLength": 24, "description": "MQTT Password" },
-    "MQTT_TOPIC_PUB": { "type": "string", "maxLength": 49, "description": "Telemetry publish topic" },
-    "MQTT_TOPIC_SUB": { "type": "string", "maxLength": 49, "description": "Command subscribe topic" },
-    "FTP_ADD": { "type": "string", "maxLength": 49, "description": "FTP Server address" },
-    "FTP_PORT": { "type": "string", "maxLength": 6, "description": "FTP Server port" },
-    "FTP_USER": { "type": "string", "maxLength": 24, "description": "FTP Username" },
-    "FTP_PWD": { "type": "string", "maxLength": 24, "description": "FTP Password" },
-    "FTP_PATH": { "type": "string", "maxLength": 49, "description": "FTP Remote folder path" }
+      "description": "Eight-digit uppercase hexadecimal interval value (e.g. '00000005' = 5)",
+      "minLength": 8,
+      "maxLength": 8
+    }
   }
 }
 ```
@@ -101,22 +90,24 @@ Downloaded via HTTP GET `hw_reqv3?type=SERVER_DETAILS&KEY=<SYS_ID_HEX>` or injec
 #### Example Payload:
 ```json
 {
-  "SYSTEM_ID": "5E0D0000",
+  "SYSTEM_ID": "00000D5E",
   "SERVER_ADD": "config.example.com",
   "SERVER_PORT": "80",
   "SERVER_PATH": "/",
-  "SER_APP_DATA": "dataTransfer",
-  "NO_OF_PARAMETERS": "00A",
-  "DATA_ACQ_MINUTES": "01",
-  "DATA_TRANS_MINUTES": "05"
+  "SER_APP_DATA": "realtimeDataPost.aspx",
+  "NO_OF_PARAMETERS": "0A",
+  "DATA_ACQ_MINUTES": "00000001",
+  "DATA_TRANS_MINUTES": "00000005"
 }
 ```
+
+The system configuration request sends the numeric system ID as eight uppercase hex digits, such as `00000D5E`. The config response must return the same string for the device to accept it.
 
 ---
 
 ### B. DAQ Parameter Configuration (`PARA_CONFIG`)
 
-Downloaded via HTTP GET `hw_reqv3?type=PARA_CONFIG&KEY=<SYS_ID_HEX>` in batches (max 10 per batch) or sent via debug terminal.
+Downloaded by HTTP POST to the parameter-configuration application path in batches of up to 10 entries. The request contains `TYPE`, `SYS_ID`, `FROM`, and `TO`; the response contains a `PARA` array.
 
 #### JSON Schema
 ```json
@@ -153,16 +144,16 @@ Downloaded via HTTP GET `hw_reqv3?type=PARA_CONFIG&KEY=<SYS_ID_HEX>` in batches 
 ```
 
 #### Compact Parameter String Format
-Each element in `"PARA"` contains a **42-character fixed header** followed by the Modbus request packet and display name separated by `#`:
+Each element in `"PARA"` contains the **30-character fixed header used by the firmware** followed by the RS485 request packet and display name separated by `#`:
 
-$$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_{4}\underbrace{\text{D}}_{5}\underbrace{\text{B}}_{6}\underbrace{\text{b}}_{7}\underbrace{\text{P}}_{8}\underbrace{\text{S}}_{9}\underbrace{\text{TOUT}}_{10-13}\underbrace{\text{MUL}}_{14-21}\underbrace{\text{ADD}}_{22-29}\underbrace{\text{IP}}_{30-37}\underbrace{\text{PORT}}_{38-41}\underbrace{\text{REQ\_PACKET}}_{42\dots\#}\text{\#}\underbrace{\text{NAME}}_{\dots\text{end}}$$
+$$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_{4}\underbrace{\text{D}}_{5}\underbrace{\text{B}}_{6}\underbrace{\text{b}}_{7}\underbrace{\text{P}}_{8}\underbrace{\text{S}}_{9}\underbrace{\text{TOUT}}_{10-13}\underbrace{\text{MUL}}_{14-21}\underbrace{\text{ADD}}_{22-29}\underbrace{\text{REQ\_PACKET}}_{30\dots\#}\text{\#}\underbrace{\text{NAME}}_{\dots\text{end}}$$
 
 | Character Offset | Field Name | Representation | Description |
 |---|---|---|---|
-| `[00..01]` | `ucSource` | 2 Decimal Digits | `01`: On-board ADC<br>`12`: RS485 Port 1 (RTU)<br>`13`: RS485 Port 2 (RTU)<br>`14`: Modbus-TCP (W5500) |
-| `[02..03]` | `ucType` | 2 Decimal Digits | Channel subtype (`00`: Standard, `01`: Power meter, etc.) |
-| `[04]` | `ucDataFormat` | 1 Decimal Digit | `0`: 32-bit Float, `1`: 16-bit Int, `2`: 32-bit Int, etc. |
-| `[05]` | `ucDataType` | 1 Decimal Digit | Signed / Unsigned / Bitfield indicator |
+| `[00..01]` | `ucSource` | 2 Decimal Digits | `00`: no source; `01`: supply; `02`: temperature; `03`–`06`: V1–V4; `07`–`08`: I1–I2; `09`: digital input; `10`: frequency; `11`: pulse count; `12`: RS485. |
+| `[02..03]` | `ucType` | 2 Decimal Digits | Firmware processing code: `01` thermistor, `02` threshold, `04`–`23` stored-value slots, `25` special Modbus record. |
+| `[04]` | `ucRS485Mode` | 1 Decimal Digit | RS485 mode passed to the Modbus handler |
+| `[05]` | `ucRS485DataType` | 1 Decimal Digit | Data type passed to the Modbus handler |
 | `[06]` | `ucBaudRate` | 1 Decimal Digit | `0`: 9600, `1`: 19200, `2`: 38400, `3`: 115200, `4`: 4800, `5`: 2400 |
 | `[07]` | `ucDataBits` | 1 Decimal Digit | `0`: 8 bits, `1`: 7 bits |
 | `[08]` | `ucParity` | 1 Decimal Digit | `0`: None, `1`: Odd, `2`: Even |
@@ -170,11 +161,11 @@ $$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_
 | `[10..13]` | `uiTimeout` | 4 Decimal Digits | Modbus response timeout in milliseconds (e.g. `3000` = 3000 ms) |
 | `[14..21]` | `flMulFactor` | 8 Hex Characters | Big-endian IEEE-754 float multiplier (`3F800000` = 1.0f) |
 | `[22..29]` | `flAddFactor` | 8 Hex Characters | Big-endian IEEE-754 float adder offset (`00000000` = 0.0f) |
-| `[30..37]` | `ucIpAddr[4]` | 8 Hex Characters | 2 hex chars per octet (`C0A80072` = `192.168.0.114`) |
-| `[38..41]` | `uiPort` | 4 Hex Characters | Big-endian 16-bit integer port (`01F6` = 502) |
-| `[42..#)` | `ucReqPacket` | Hex String | Raw Modbus Request Frame (Slave ID + FC + Reg + Count + CRC) |
+| `[30..#)` | `ucRS485Packet` | Hex String | RS485 request packet; at most 29 characters (15 bytes) are stored |
 | `#` | Delimiter | 1 Character | Separator between packet and name |
-| `(#..end]` | `ucParaName` | ASCII String | Human-readable parameter name (up to 31 characters) |
+| `(#..end]` | `ucParaStr` | ASCII String | Display name; firmware stores at most 9 characters |
+
+The firmware supports built-in source IDs `00`–`11` and RS485 source `12`. Fields not represented in this compact record are cleared when the parameter record is loaded.
 
 #### Example Payload:
 ```json
@@ -183,8 +174,8 @@ $$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_
   "FROM": "000",
   "TO": "001",
   "PARA": [
-    ["140001300030003F80000000000000C0A8007201F6010300000002C40B#Active Power"],
-    ["140001300030003F80000000000000C0A8007201F601030002000265CB#Reactive Power"]
+    ["120001300030003F80000000000000010300000002C40B#Active Power"],
+    ["120001300030003F8000000000000001030002000265CB#Reactive Power"]
   ]
 }
 ```
@@ -197,180 +188,27 @@ $$\underbrace{\text{SS}}_{0-1}\underbrace{\text{TT}}_{2-3}\underbrace{\text{F}}_
 
 ---
 
-### A. Diagnostic Level Configuration (`debugLevel`)
-
-Sets individual subsystem verbosity flags in RAM (resets to defaults on reboot).
-
-```json
-{
-  "CMD": "debugLevel",
-  "acq": "0|1|2",
-  "mbtcp": "0|1|2",
-  "mb1": "0|1|2",
-  "mb2": "0|1|2",
-  "dtx": "0|1",
-  "nw": "0|1",
-  "all": "0|1"
-}
-```
-
-* **`acq`**: Master acquisition group (sets `mbtcp`, `mb1`, `mb2` simultaneously).
-* **`mbtcp`**: Modbus-TCP / Ethernet acquisition trace (`0`=off, `1`=concise `P[i] val`, `2`=full hex frames).
-* **`mb1`**: RS485 Port 1 RTU trace (`0`=off, `1`=concise, `2`=full hex frames).
-* **`mb2`**: RS485 Port 2 RTU trace (`0`=off, `1`=concise, `2`=full hex frames).
-* **`dtx`**: Flash upload POST body display (`0`=off, `1`=show body text).
-* **`nw`**: Uplink network event traces (W5500, EC200U 4G, FCM360W Wi-Fi).
-* **`all`**: Master trace output toggle.
-
-**Quick Switches:**
-* `{"CMD":"DEBUG_ALL"}`: Turn on all subsystem logs.
-* `{"CMD":"DEBUG_NIL"}`: Silence all debug channels immediately.
-* `{"CMD":"DEBUG_NW"}`: Enable network interface uplink diagnostics.
-
----
-
-### B. Network & Server Configuration
-
-#### Set Endpoints (`setServer`)
-Configures either the configuration download or the data upload server target.
-```json
-{"CMD":"setServer","ep":"config|data","addr":"config.example.com","port":"80","app":"dataTransfer"}
-```
-
-#### Set Authentication Credentials (`setAuth`)
-Configures HTTP Basic Auth or MQTT credentials for an endpoint.
-```json
-{"CMD":"setAuth","ep":"config|data","user":"admin","pass":"secret"}
-```
-
-#### Set Active Network Uplink (`setNetMode`)
-Selects the primary internet transport and immediately switches state machine without reboot.
-```json
-{"CMD":"setNetMode","mode":"ethernet|wifi|modem","ssid":"MyAP","pass":"secret123"}
-```
-
-#### Configure Ethernet Hardware IP (`setEthernet` / `getEthernet`)
-Sets the W5500 MAC and static IP configuration. Saved to EEPROM immediately.
-```json
-{"CMD":"setEthernet","mac":"C0:A8:00:D2:4D:5E","ip":"192.168.0.210","sub":"255.255.255.0","gw":"192.168.0.1"}
-```
-Query current values:
-```json
-{"CMD":"getEthernet"}
-```
-
-#### Set Device Protocol (`setProtocol`)
-```json
-{"CMD":"setProtocol","proto":"http|mqtt|ftp"}
-```
-
-#### Set Intervals (`setInterval`)
-```json
-{"CMD":"setInterval","trans":"60","acq":"10"}
-```
-
-#### Set Device IMEI / Key (`setImei`)
-Used for registration when operating without a cellular modem.
-```json
-{"CMD":"setImei","imei":"865510081833552"}
-```
-
-#### Set RTC Date/Time (`setDateTime`)
-Syncs time immediately to the on-board MCP7940 real-time clock over I2C.
-```json
-{"CMD":"setDateTime","year":"26","month":"5","date":"28","weekday":"4","hour":"10","min":"30","sec":"0"}
-```
-
----
-
-### C. Live Triggers & Modem Passthrough
-
-* **Manual Acquisition & Uplink (`acqNow`):**  
-  Forces an immediate ADC + RS485 + TCP poll, appends a record to flash, and starts transmission.
-  ```json
-  {"CMD":"acqNow"}
-  ```
-* **Force Server Flush (`txNow`):**  
-  Immediately attempts upload of pending flash log records without waiting for timer interval.
-  ```json
-  {"CMD":"txNow","log":"1"}
-  ```
-* **Raw Wi-Fi AT Command (`wifiAT`):**  
-  Sends raw command to FCM360W module and prints response (valid when in Wi-Fi mode).
-  ```json
-  {"CMD":"wifiAT","at":"AT+QHTTPCFG=?"}
-  ```
-* **Raw 4G Modem AT Command (`modemAT`):**  
-  Sends raw command to EC200U modem over UART0 and prints response.
-  ```json
-  {"CMD":"modemAT","val":"AT+CSQ"}
-  ```
-
----
-
-### D. Flash & EEPROM Management
-
-* **Force Re-download of Configs (`clearFlags`):**  
-  Clears individual or all download flags in EEPROM so the device fetches fresh configs on next cycle.
-  ```json
-  {"CMD":"clearFlags","reg":"1","sys":"1","para":"1"}
-  ```
-* **Named Flag Shortcuts:**
-  * `{"CMD":"RESET_EEPROM"}`: Clears all flags AND resets Flash FIFO (keeps IMEI).
-  * `{"CMD":"UNIT_CONFIG"}`: Clears registration and system config flags.
-  * `{"CMD":"PARACONFIG"}`: Clears DAQ parameter flag.
-* **Erase Flash FIFO (`ERASE_FLASH`):**  
-  Resets read/write/sequence pointers to 0 and invalidates existing record magic bytes.
-  ```json
-  {"CMD":"ERASE_FLASH"}
-  ```
-* **Save / Load / Reset Config:**
-  * `{"CMD":"saveConfig"}`: Writes in-RAM system structs to EEPROM.
-  * `{"CMD":"loadConfig"}`: Reloads structs from EEPROM into RAM.
-  * `{"CMD":"resetConfig"}`: Restores default values into RAM (requires `saveConfig` to persist).
-  * `{"CMD":"factoryReset"}`: Invalidates EEPROM signature byte (reboots with factory defaults).
-
----
-
-### E. Query / Request Commands (`REQ`)
+### B. Query / Request Commands (`REQ`)
 
 Queries use the `"REQ"` key and reply directly with data structures.
 
-#### 1. Hardware Diagnostic Probe (`DIAG`)
-Probes the EEPROM (scratch byte write/read at `0x7F00`), SPI Flash (JEDEC ID read), and RTC (I2C read + oscillator running check).
-```json
-// Send:
-{"REQ":"DIAG"}
-
-// Response:
-{
-  "REQ": "DIAG",
-  "eeprom": { "ok": 1, "wr": "A5", "rd": "A5" },
-  "flash": { "ok": 1, "mfg": "BF", "dev": "41" },
-  "rtc": { "ok": 1, "osc": 1, "time": "26-05-28 10:30:00" }
-}
-```
-
-#### 2. System Status (`GET_SYS_INFO`)
+#### 1. System Status (`GET_SYS_INFO`)
 ```json
 // Send:
 {"REQ":"GET_SYS_INFO"}
 
 // Response:
 {
-  "SYS_ID": "5E0D0000",
-  "NO_OF_PARA": "0064",
+  "SYS_ID": "00000D5E",
+  "NO_OF_PARA": "0002",
   "PENDING_FILES": "0003",
-  "WRITE_CNT": 12,
-  "READ_CNT": 9,
-  "MODE": "1",
-  "SS": "-58"
+  "MODE": "0"
 }
 ```
-*(MODE: `0`=Modem, `1`=Wi-Fi, `2`=Ethernet; SS: Signal strength dBm)*
+The fields are uppercase hexadecimal numbers. `MODE` comes from the stored internet-source byte; this firmware initializes that value to zero for modem operation.
 
-#### 3. Live Parameter Values (`PARA_VALUE`)
-Fetches acquired data from memory as raw IEEE-754 32-bit big-endian hex floats.
+#### 2. Live Parameter Values (`PARA_VALUE`)
+Fetches acquired data from memory as 32-bit value hex strings. `START` and `SIZE` are two-digit hexadecimal parameter IDs; `SIZE` is the inclusive ending parameter ID, not a count. The returned values are emitted in most-significant-byte-first order by the debug formatter, unlike the little-endian byte order used in telemetry uploads.
 ```json
 // Send (Hex indices):
 {"REQ":"PARA_VALUE","START":"0","SIZE":"0A"}
@@ -379,43 +217,11 @@ Fetches acquired data from memory as raw IEEE-754 32-bit big-endian hex floats.
 {
   "PARA_NO": "00",
   "SIZE": "0A",
-  "VALUES": ["42487AE1", "00000000", "41AC0000", "..."]
+  "VALUES": ["E17A4842", "00000000", "0000C842", "..."]
 }
 ```
 
-#### 4. Read Stored Parameter Table (`GET_PARA_CONFIG`)
-Dumps the parameter table stored in EEPROM with transmission pacing for serial Bluetooth/TTL bridges.
-```json
-// Send (Optional Hex range filter):
-{"REQ":"GET_PARA_CONFIG","FROM":"00","TO":"09"}
-
-// Response:
-{
-  "count": "64",
-  "from": "00",
-  "to": "09",
-  "params": [
-    {
-      "i": 0,
-      "src": 14,
-      "type": 0,
-      "fmt": 0,
-      "dtype": 1,
-      "baud": 3,
-      "dbits": 0,
-      "par": 0,
-      "stop": 0,
-      "to": 3000,
-      "port": 502,
-      "mul": 1.0,
-      "add": 0.0,
-      "ip": "192.168.0.114",
-      "req": "010300000002C40B",
-      "name": "Active Power"
-    }
-  ]
-}
-```
+The device also supports the legacy `$DEBUG_SYSTEM#`, `$DEBUG_BOARD#`, `$DEBUG_PARA#`, `$ACQ_NOW#`, `$DEBUG_ALL#`, `$DEBUG_NW#`, `$DEBUG_RS485#`, `$DEBUG_NIL#`, and `$4G_CMD=<AT command>#` tokens. JSON `CMD` commands are not handled by the shown debug parser.
 
 ---
 
@@ -425,8 +231,8 @@ The firmware issues two types of requests to the backend server:
 
 ```mermaid
 flowchart LR
-    Device[IoT Controller] -->|1. Config & Details Request| ServerConfig[Server: /hw_reqv3]
-    Device -->|2. Sensor Telemetry Upload| ServerData[Server: /dataTransfer]
+    Device[IoT Controller] -->|1. Config & Details Request| ServerConfig[Configured JSON POST path]
+    Device -->|2. Sensor Telemetry Upload| ServerData[Configured telemetry POST path]
     ServerConfig -->|JSON Response| Device
     ServerData -->|ACK: >$IST=timestamp#| Device
 ```
@@ -435,11 +241,11 @@ flowchart LR
 
 ### A. Configuration & System Requests (Device $\to$ Server)
 
-Depending on firmware version, configuration downloads are triggered either as **JSON POST bodies** (`controller.c`) or as **HTTP GET Query strings** (`dataTransfer.c`):
+Configuration downloads use JSON POST requests to configured application paths in this firmware.
 
 #### 1. Unit System Configuration Request (`SERVER_DETAILS`)
 * **Transport:** HTTP POST
-* **Target Path:** `http://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_SYS_CONFIG>` (e.g. `/hw_reqv3` or `/unitconfigpost.aspx`)
+* **Target Path:** `http://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_SYS_CONFIG>` (default application: `systemConfigPost.aspx`)
 * **JSON Schema:**
 ```json
 {
@@ -454,7 +260,7 @@ Depending on firmware version, configuration downloads are triggered either as *
     },
     "SYSTEM_ID": {
       "type": "string",
-      "description": "8-digit hex string of the 32-bit System ID (e.g. '5E0D0000')",
+      "description": "8-digit hex string of the registered 32-bit System ID (e.g. '5E0D0000')",
       "maxLength": 8
     }
   }
@@ -464,10 +270,9 @@ Depending on firmware version, configuration downloads are triggered either as *
 ```json
 {
   "TYPE": "SERVER_DETAILS",
-  "SYSTEM_ID": "5E0D0000"
+  "SYSTEM_ID": "00000D5E"
 }
 ```
-* *(In HTTP GET format: `GET /hw_reqv3?type=SERVER_DETAILS&KEY=5E0D0000`)*
 
 ---
 
@@ -508,25 +313,84 @@ Depending on firmware version, configuration downloads are triggered either as *
 ```json
 {
   "TYPE": "PARA_CONFIG",
-  "SYS_ID": "5E0D0000",
+  "SYS_ID": "00000D5E",
   "FROM": "000",
   "TO": "002"
 }
 ```
-* *(In HTTP GET format: `GET /hw_reqv3?type=PARA_CONFIG&KEY=5E0D0000`)*
 
 ---
 
 #### 3. IMEI Device Registration Request (`imieRegistration`)
-* **Transport:** HTTP POST (Form-encoded) or HTTP GET
+* **Transport:** HTTP POST (form-encoded)
 * **Form POST:** `IMIENumber=865510081833552`
-* **HTTP GET:** `GET /hw_reqv3?type=SERVER_DETAILS&KEY=865510081833552`
+
+Registration is parsed as the legacy text response `$SysID=<8 hex characters>#`, not as JSON.
 
 ---
 
+#### 4. External 8 Channel Relay Module Configuration
+
+This is a separate configuration download after the system and parameter configuration stages. It configures multiple 12 V Modbus RTU 8 channel modules independently of sensor parameters and the controller’s local I/O.
+
+* **Endpoint:** `relayModulesConfigPost.aspx`
+* **Method:** HTTP POST with a JSON body
+* **Request:**
+
+```json
+{
+  "TYPE": "RELAY_MODULE_CONFIG",
+  "SYSTEM_ID": "00000D5E"
+}
+```
+
+* **Response:** `SYSTEM_ID`, MQTT broker address and port, client credentials, command and status topics, and a `MODULES` array. The firmware supports up to 16 modules, eight channels per module, unique Modbus slave IDs from 1 through 247, and a zero-based `coilStart` address. Module slave IDs must also be unique on the shared RS485 bus. Modbus serial settings are fixed at 9600 8N1.
+
+```json
+{
+  "TYPE": "RELAY_MODULE_CONFIG",
+  "SYSTEM_ID": "00000D5E",
+  "MQTT_BROKER": "broker.example.net",
+  "MQTT_PORT": 1883,
+  "MQTT_CLIENT_ID": "device-00000D5E",
+  "MQTT_USERNAME": "device-user",
+  "MQTT_PASSWORD": "device-secret",
+  "MQTT_COMMAND_TOPIC": "devices/00000D5E/relay/set",
+  "MQTT_STATUS_TOPIC": "devices/00000D5E/relay/status",
+  "MODULES": [
+    { "slaveId": 1, "channels": 8, "coilStart": 0 }
+  ]
+}
+```
+
+The firmware configures MQTT 3.1.1 and direct message receive mode on the modem, then opens the broker, connects with the configured credentials, and subscribes to `MQTT_COMMAND_TOPIC` at QoS 1. It handles disconnect indications and retries the connection. Send commands in this form (`module` is the slave ID as two hex characters; `channel` is decimal 1–8):
+
+```json
+{
+  "commandId": "cmd-1042",
+  "module": "01",
+  "channel": "03",
+  "state": "ON"
+}
+```
+
+`state` accepts `ON` or `OFF`. The firmware sends Modbus RTU function 05 to `coilStart + channel - 1`, with value `FF00` for ON and `0000` for OFF. It checks the response echo and publishes a QoS 1 result using `QMTPUBEX` to `MQTT_STATUS_TOPIC`:
+
+```json
+{
+  "commandId": "cmd-1042",
+  "module": "01",
+  "channel": "3",
+  "state": "ON",
+  "result": "OK"
+}
+```
+
+The result is `ERROR` when the Modbus operation fails. Only one command is processed at a time, after any active sensor bus transaction. MQTT uses a non-TLS connection in this firmware.
+
 ### B. Telemetry & Sensor Data Upload (`DataTx` / `data.c`)
 
-Telemetry records are uploaded periodically using an HTTP POST to `http://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (e.g., `/dataTransfer` or `/realtimeDataexLargeHttp`).
+Telemetry records are uploaded periodically using an HTTP POST to `http://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (default application: `realtimeDataPost.aspx`).
 
 * **Header:** `Content-Type: application/x-www-form-urlencoded`
 * **Payload Structure:**
@@ -549,14 +413,14 @@ $$\text{DATA000}=\underbrace{\text{HDR}_{52\text{ hex chars}}}_{\text{26-byte Wi
 | `15` | `30..31` | Relay 1 Status | ASCII Digit / Byte | `0` = Off, `1` = On |
 | `16` | `32..33` | Relay 2 Status | ASCII Digit / Byte | `0` = Off, `1` = On |
 | `17` | `34..35` | Relay 3 Status | ASCII Digit / Byte | `0` = Off, `1` = On |
-| `18..21` | `36..43` | Transmit Counter | UINT32 Little-Endian | Packets successfully sent counter |
+| `18..21` | `36..43` | Acquisition Counter | UINT32 Little-Endian | Acquisition counter included in each record |
 | `22..25` | `44..51` | Parameter Count ($N$) | UINT32 Little-Endian | `0A000000` $\to$ 10 parameters |
 
 #### 2. Body ($N \times 4$ Bytes / $N \times 8$ Hex Chars)
 Each acquired parameter value is appended as an **8-character IEEE-754 Little-Endian float hex string**:
-* `42487AE1` $\to$ `50.12f`
-* Timeout sentinel value: `-2222.0f` (`C50AE000`)
-* Communication error / CRC error sentinel: `-3333.0f` (`C5505000`)
+* `E17A4842` $\to$ `50.12f` (little-endian float bytes)
+* Timeout sentinel value: `-2222.0f` (`00E00AC5`, little-endian float bytes)
+* Communication error / CRC error sentinel: `-3333.0f` (`005050C5`, little-endian float bytes)
 
 #### Server Response & Time Sync
 The server responds to each successful upload with an ACK that includes the current Indian Standard Time:

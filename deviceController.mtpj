@@ -343,6 +343,22 @@
       <ParentItem>0adbca26-f5dd-4d5b-af56-7fae2269aa1e</ParentItem>
       <Property>589302a6-b38b-400e-8c31-bae125aba9d6</Property>
     </Instance>
+    <Instance Guid="8d4c2c47-8d55-4c24-ae7b-10d447a32480">
+      <Name>relaymodule.c</Name>
+      <Type>File</Type>
+      <RelativePath>relaymodule.c</RelativePath>
+      <TreeImageGuid>941832c1-fc3b-4e1b-94e8-01ea17128b42</TreeImageGuid>
+      <ParentItem>0adbca26-f5dd-4d5b-af56-7fae2269aa1e</ParentItem>
+      <Property>589302a6-b38b-400e-8c31-bae125aba9d6</Property>
+    </Instance>
+    <Instance Guid="5845ab76-8888-485c-8f2b-058bb55a79e1">
+      <Name>relaymodule.h</Name>
+      <Type>File</Type>
+      <RelativePath>relaymodule.h</RelativePath>
+      <TreeImageGuid>941832c1-fc3b-4e1b-94e8-01ea17128b42</TreeImageGuid>
+      <ParentItem>0adbca26-f5dd-4d5b-af56-7fae2269aa1e</ParentItem>
+      <Property>589302a6-b38b-400e-8c31-bae125aba9d6</Property>
+    </Instance>
     <Instance Guid="17514c10-1941-4ab8-92df-d85ca037f9f5">
       <Name>data.h</Name>
       <Type>File</Type>

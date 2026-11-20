@@ -75,12 +75,12 @@ static UINT8 buildSystemConfigCommandsFromJson(UINT8 *pucJson, UINT8 *pucOut,
 static UINT8 loadCompactParameter(UINT8 *pucRecord, UINT16 uiLength, UINT16 uiParaId)
 {
 	UINT16 uiIndex, uiPacketLength=0, uiNameLength=0;
-	UINT16 uiSeparator=42;
+	UINT16 uiSeparator=30;
 	UINT8 ucTemp[9];
 	PARA_CONFIG *pPara;
-	if(uiParaId>=N0_OF_PARAMETERS || uiLength<44)
+	if(uiParaId>=N0_OF_PARAMETERS || uiLength<33)
 		return FAILURE;
-	for(uiIndex=42;uiIndex<uiLength;uiIndex++)
+	for(uiIndex=30;uiIndex<uiLength;uiIndex++)
 	{
 		if(pucRecord[uiIndex]=='#')
 		{
@@ -88,7 +88,7 @@ static UINT8 loadCompactParameter(UINT8 *pucRecord, UINT16 uiLength, UINT16 uiPa
 			break;
 		}
 	}
-	if(uiSeparator==42)
+	if(uiSeparator==30 || uiSeparator>=uiLength-1)
 		return FAILURE;
 	pPara=&sParaConfig[uiParaId];
 	for(uiIndex=0;uiIndex<sizeof(pPara->ucPraConfigArray);uiIndex++)
@@ -121,10 +121,10 @@ static UINT8 loadCompactParameter(UINT8 *pucRecord, UINT16 uiLength, UINT16 uiPa
 	ASCIIHexToNumber(ucTemp,2);
 	pPara->para.fAdditionFactor=uConvert.fFloatVar;
 	for(uiIndex=0;uiIndex<30;uiIndex++) pPara->para.ucRS485Packet[uiIndex]=0;
-	uiPacketLength=(UINT16)(uiSeparator-42);
+	uiPacketLength=(UINT16)(uiSeparator-30);
 	if(uiPacketLength>sizeof(pPara->para.ucRS485Packet)-1)
 		uiPacketLength=sizeof(pPara->para.ucRS485Packet)-1;
-	for(uiIndex=0;uiIndex<uiPacketLength;uiIndex++) pPara->para.ucRS485Packet[uiIndex]=pucRecord[42+uiIndex];
+	for(uiIndex=0;uiIndex<uiPacketLength;uiIndex++) pPara->para.ucRS485Packet[uiIndex]=pucRecord[30+uiIndex];
 	uiNameLength=(UINT16)(uiLength-uiSeparator-1);
 	if(uiNameLength>sizeof(pPara->para.ucParaStr)-1)
 		uiNameLength=sizeof(pPara->para.ucParaStr)-1;

@@ -77,6 +77,7 @@ extern UINT8 ucNetworkStatus;
 extern UINT8 ucSIMStatus;
 extern UINT8 ucGPRSConStatus;
 extern UINT8 ucGPRSDataTranferFlag;
+extern UINT8 ucGPRSHttpTransferBusy;
 extern UINT8 ucSignalStrength;
 extern UINT8 ucDataTransferSuccess;
 extern UINT8 ucGPRSSMState;
