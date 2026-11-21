@@ -11,7 +11,7 @@
 #include "generalfunctions.h"
 
 #define RELAY_EEPROM_BASE 23500
-#define RELAY_EEPROM_VALID 0xA7
+#define RELAY_EEPROM_VALID 0xA9
 #define RELAY_TOPIC_SIZE 96
 #define RELAY_CREDENTIAL_SIZE 64
 #define RELAY_CLIENT_SIZE 48
@@ -23,7 +23,10 @@ extern UINT8 ucPraAcqFlag;
 
 static UINT8 ucRelayModuleCount;
 static UINT8 ucRelaySlaveIds[RELAY_MODULE_MAX_COUNT];
-static UINT16 uiRelayCoilStarts[RELAY_MODULE_MAX_COUNT];
+static UINT16 uiRelayRegisters[RELAY_MODULE_MAX_COUNT][RELAY_MODULE_CHANNEL_COUNT];
+static UINT8 ucRelayWriteFunctions[RELAY_MODULE_MAX_COUNT];
+static UINT16 uiRelayOnValues[RELAY_MODULE_MAX_COUNT];
+static UINT16 uiRelayOffValues[RELAY_MODULE_MAX_COUNT];
 static UINT8 ucMqttHost[RELAY_CREDENTIAL_SIZE];
 static UINT8 ucMqttPort[8];
 static UINT8 ucMqttClientId[RELAY_CLIENT_SIZE];
@@ -101,12 +104,15 @@ static UINT8 relayCopyJsonNumber(UINT8 *pucJson, UINT8 *pucKey, UINT16 *puiValue
 			while(uiAt<uiJson && pucJson[uiAt]!=':')uiAt++;
 			if(uiAt>=uiJson)return FAILURE;
 			uiAt++;
-			while(uiAt<uiJson && pucJson[uiAt]==' ')uiAt++;
+			while(uiAt<uiJson && (pucJson[uiAt]==' ' || pucJson[uiAt]=='\t' || pucJson[uiAt]=='\r' || pucJson[uiAt]=='\n'))uiAt++;
 			if(pucJson[uiAt]=='"')uiAt++;
 			while(uiAt<uiJson && pucJson[uiAt]>='0' && pucJson[uiAt]<='9')
 			{
+				UINT8 ucDigit=(UINT8)(pucJson[uiAt]-'0');
+				if(uiValue>6553 || (uiValue==6553 && ucDigit>5))return FAILURE;
 				ucFound=1;
-				uiValue=(UINT16)(uiValue*10+(pucJson[uiAt++]-'0'));
+				uiValue=(UINT16)(uiValue*10+ucDigit);
+				uiAt++;
 			}
 			if(ucFound){*puiValue=uiValue;return SUCCESS;}
 			return FAILURE;
@@ -134,10 +140,18 @@ static UINT8 relayStoreConfig(void)
 	writeExtEEPROMChar(EEPROM_ADD,uiAddress++,ucRelayModuleCount);
 	for(ucI=0;ucI<RELAY_MODULE_MAX_COUNT;ucI++)
 	{
+		UINT8 ucChannel;
 		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,ucRelaySlaveIds[ucI]);
-		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)(uiRelayCoilStarts[ucI]>>8));
-		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)uiRelayCoilStarts[ucI]);
-		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,0);
+		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,ucRelayWriteFunctions[ucI]);
+		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)(uiRelayOnValues[ucI]>>8));
+		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)uiRelayOnValues[ucI]);
+		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)(uiRelayOffValues[ucI]>>8));
+		writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)uiRelayOffValues[ucI]);
+		for(ucChannel=0;ucChannel<RELAY_MODULE_CHANNEL_COUNT;ucChannel++)
+		{
+			writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)(uiRelayRegisters[ucI][ucChannel]>>8));
+			writeExtEEPROMChar(EEPROM_ADD,uiAddress++,(UINT8)uiRelayRegisters[ucI][ucChannel]);
+		}
 	}
 	{
 		UINT8 *pucArrays[7];
@@ -168,10 +182,18 @@ static UINT8 relayLoadConfig(void)
 	if(ucRelayModuleCount>RELAY_MODULE_MAX_COUNT)return FAILURE;
 	for(ucI=0;ucI<RELAY_MODULE_MAX_COUNT;ucI++)
 	{
+		UINT8 ucChannel;
 		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucRelaySlaveIds[ucI]);
-		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayCoilStarts[ucI]=(UINT16)ucValue<<8;
-		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayCoilStarts[ucI]|=ucValue;
-		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);
+		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucRelayWriteFunctions[ucI]);
+		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayOnValues[ucI]=(UINT16)ucValue<<8;
+		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayOnValues[ucI]|=ucValue;
+		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayOffValues[ucI]=(UINT16)ucValue<<8;
+		readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayOffValues[ucI]|=ucValue;
+		for(ucChannel=0;ucChannel<RELAY_MODULE_CHANNEL_COUNT;ucChannel++)
+		{
+			readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayRegisters[ucI][ucChannel]=(UINT16)ucValue<<8;
+			readExtEEPROMChar(EEPROM_ADD,uiAddress++,&ucValue);uiRelayRegisters[ucI][ucChannel]|=ucValue;
+		}
 	}
 	{
 		UINT8 *pucArrays[7];
@@ -190,11 +212,47 @@ static UINT8 relayLoadConfig(void)
 	return SUCCESS;
 }
 
+static UINT8 relayParseChannelRegisters(UINT8 *pucObject, UINT16 *puiRegisters)
+{
+	UINT16 uiAt=0,uiObjectStart,uiObjectEnd,uiCount=0,uiChannel,uiRegister;
+	UINT8 ucDepth,ucI,ucSeen[RELAY_MODULE_CHANNEL_COUNT];
+	UINT8 ucRelayObject[96];
+	for(ucI=0;ucI<RELAY_MODULE_CHANNEL_COUNT;ucI++)ucSeen[ucI]=0;
+	while(pucObject[uiAt]!=0 && !(pucObject[uiAt]=='"' && pucObject[uiAt+1]=='r' && pucObject[uiAt+2]=='e' && pucObject[uiAt+3]=='l' && pucObject[uiAt+4]=='a' && pucObject[uiAt+5]=='y' && pucObject[uiAt+6]=='s' && pucObject[uiAt+7]=='"'))uiAt++;
+	if(pucObject[uiAt]==0)return FAILURE;
+	while(pucObject[uiAt]!=0 && pucObject[uiAt]!='[')uiAt++;
+	if(pucObject[uiAt++]!='[')return FAILURE;
+	while(pucObject[uiAt]!=0 && pucObject[uiAt]!=']')
+	{
+		if(pucObject[uiAt]=='{')
+		{
+			uiObjectStart=uiAt;ucDepth=1;uiAt++;
+			while(pucObject[uiAt]!=0 && ucDepth)
+			{
+				if(pucObject[uiAt]=='{')ucDepth++;
+				else if(pucObject[uiAt]=='}')ucDepth--;
+				uiAt++;
+			}
+			if(ucDepth || uiAt-uiObjectStart>=sizeof(ucRelayObject))return FAILURE;
+			uiObjectEnd=uiAt;
+			for(ucI=0;ucI<sizeof(ucRelayObject);ucI++)ucRelayObject[ucI]=0;
+			for(uiRegister=0;uiRegister<uiObjectEnd-uiObjectStart;uiRegister++)ucRelayObject[uiRegister]=pucObject[uiObjectStart+uiRegister];
+			if(relayCopyJsonNumber(ucRelayObject,(UINT8*)"channel",&uiChannel)!=SUCCESS || uiChannel<1 || uiChannel>RELAY_MODULE_CHANNEL_COUNT)return FAILURE;
+			if(relayCopyJsonNumber(ucRelayObject,(UINT8*)"register",&uiRegister)!=SUCCESS)return FAILURE;
+			if(ucSeen[uiChannel-1])return FAILURE;
+			ucSeen[uiChannel-1]=1;puiRegisters[uiChannel-1]=uiRegister;uiCount++;
+		}
+		else uiAt++;
+	}
+	if(pucObject[uiAt]!=']' || uiCount!=RELAY_MODULE_CHANNEL_COUNT)return FAILURE;
+	return SUCCESS;
+}
+
 static UINT8 relayParseModules(UINT8 *pucJson)
 {
-	UINT16 uiJson=0,uiStart=0,uiEnd=0,uiCount=0,uiId,uiCoil,uiChannels;
+	UINT16 uiJson=0,uiStart=0,uiEnd=0,uiCount=0,uiId,uiChannels,uiFunction,uiOnValue,uiOffValue;
 	UINT8 ucDepth=0,ucI;
-	UINT8 ucObject[180];
+	UINT8 ucObject[500];
 	while(pucJson[uiJson]!=0 && !(pucJson[uiJson]=='"' && pucJson[uiJson+1]=='M' && pucJson[uiJson+2]=='O' && pucJson[uiJson+3]=='D' && pucJson[uiJson+4]=='U' && pucJson[uiJson+5]=='L' && pucJson[uiJson+6]=='E' && pucJson[uiJson+7]=='S'))uiJson++;
 	if(pucJson[uiJson]==0)return FAILURE;
 	while(pucJson[uiJson]!=0 && pucJson[uiJson]!='[')uiJson++;
@@ -216,10 +274,16 @@ static UINT8 relayParseModules(UINT8 *pucJson)
 			for(uiId=0;uiId<uiEnd-uiStart;uiId++)ucObject[uiId]=pucJson[uiStart+uiId];
 			if(relayCopyJsonNumber(ucObject,(UINT8*)"slaveId",&uiId)!=SUCCESS || uiId<1 || uiId>247)return FAILURE;
 			if(relayCopyJsonNumber(ucObject,(UINT8*)"channels",&uiChannels)!=SUCCESS || uiChannels!=RELAY_MODULE_CHANNEL_COUNT)return FAILURE;
-			if(relayCopyJsonNumber(ucObject,(UINT8*)"coilStart",&uiCoil)!=SUCCESS)uiCoil=0;
-			if(uiCoil>65528 || uiCount>=RELAY_MODULE_MAX_COUNT)return FAILURE;
+			if(relayCopyJsonNumber(ucObject,(UINT8*)"writeFunction",&uiFunction)!=SUCCESS || uiFunction!=5)return FAILURE;
+			if(relayCopyJsonNumber(ucObject,(UINT8*)"onValue",&uiOnValue)!=SUCCESS)return FAILURE;
+			if(relayCopyJsonNumber(ucObject,(UINT8*)"offValue",&uiOffValue)!=SUCCESS)return FAILURE;
+			if(uiOnValue!=65280 || uiOffValue!=0)return FAILURE;
+			if(uiCount>=RELAY_MODULE_MAX_COUNT)return FAILURE;
+			if(relayParseChannelRegisters(ucObject,uiRelayRegisters[uiCount])!=SUCCESS)return FAILURE;
 			ucRelaySlaveIds[uiCount]=(UINT8)uiId;
-			uiRelayCoilStarts[uiCount]=uiCoil;
+			ucRelayWriteFunctions[uiCount]=(UINT8)uiFunction;
+			uiRelayOnValues[uiCount]=uiOnValue;
+			uiRelayOffValues[uiCount]=uiOffValue;
 			uiCount++;
 		}
 		else uiJson++;
@@ -461,12 +525,18 @@ void relayModuleService(void)
 {
 	UINT8 ucStatus;
 	UINT16 uiLoc;
+	UINT16 uiWriteValue;
 	static UINT8 ucMqttStepStarted=0;
 	static UINT8 ucRelayWriteStarted=0;
 	if(!ucRelayModuleReady)
 	{
 		if(relayLoadConfig()==SUCCESS)ucRelayModuleReady=1;
-		else return;
+		else
+		{
+			ucSystemDownloadRelayModuleConfig=1;
+			writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_DL_RELAY_MODULE_CONFIG,1);
+			return;
+		}
 	}
 	if(ucGPRSHttpTransferBusy || ucSendSMSFlag || ucBaordTestInProgress)return;
 	if(ucPendingPublish)
@@ -478,15 +548,17 @@ void relayModuleService(void)
 	{
 		if(ucRS485BusFlag!=RS485_CON_DATA_ACQ || ucPraAcqFlag!=0)return;
 		if(!ucRelayWriteStarted){ucSavedAcqDisable=ucAcqDataDisable;ucAcqDataDisable=1;ucRelayWriteStarted=1;}
-		ucRelayModbusFrame[0]=ucPendingSlave;ucRelayModbusFrame[1]=0x05;
+		ucRelayModbusFrame[0]=ucPendingSlave;
 		{
 			UINT8 ucModule;
 			for(ucModule=0;ucModule<ucRelayModuleCount && ucRelaySlaveIds[ucModule]!=ucPendingSlave;ucModule++);
 			if(ucModule>=ucRelayModuleCount){ucPendingRelayWrite=0;ucAcqDataDisable=ucSavedAcqDisable;ucRelayWriteStarted=0;return;}
-			uiLoc=(UINT16)(uiRelayCoilStarts[ucModule]+ucPendingChannel-1);
+			uiLoc=uiRelayRegisters[ucModule][ucPendingChannel-1];
+			ucRelayModbusFrame[1]=ucRelayWriteFunctions[ucModule];
+			uiWriteValue=ucPendingState?uiRelayOnValues[ucModule]:uiRelayOffValues[ucModule];
 		}
 		ucRelayModbusFrame[2]=(UINT8)(uiLoc>>8);ucRelayModbusFrame[3]=(UINT8)uiLoc;
-		ucRelayModbusFrame[4]=ucPendingState?0xFF:0x00;ucRelayModbusFrame[5]=0;
+		ucRelayModbusFrame[4]=(UINT8)(uiWriteValue>>8);ucRelayModbusFrame[5]=(UINT8)uiWriteValue;
 		insertCRC16(ucRelayModbusFrame,6);
 		if(ucModbusFlag==0)ucModbusFlag=1;
 		ucRS485BusFlag=RS485_CON_DATA_ACQ;

@@ -6,7 +6,7 @@ This guide describes the backend requests and responses implemented by this firm
 
 ## 1. System Architecture & Communication Flow
 
-The device communicates over HTTP/1.1 through its cellular modem (2G or 4G mode).
+The device communicates with backend endpoints over HTTPS through its cellular modem (2G or 4G mode). The modem uses TLS 1.2 with SNI and validates the server certificate using a CA certificate provisioned in modem UFS as `ca.pem`. The configured backend port should normally be `443`.
 
 ```mermaid
 sequenceDiagram
@@ -39,7 +39,7 @@ sequenceDiagram
 
 ## 2. API Endpoints Specification
 
-All routes must be served on the server's configured host and port (default HTTP port `80` or `8080`).
+All routes must be served on the configured host and port (normally HTTPS port `443`). The CA certificate chain required to validate the server must be installed in the modem file system as `UFS:ca.pem` before these exchanges can succeed.
 
 ---
 
@@ -75,8 +75,8 @@ Called by the device after registration to obtain operational intervals and endp
 ```json
 {
   "SYSTEM_ID": "00000D5E",
-  "SERVER_ADD": "config.example.com",
-  "SERVER_PORT": "80",
+  "SERVER_ADD": "iot.mavinsandeep.co.in",
+  "SERVER_PORT": "443",
   "SERVER_PATH": "/",
   "SER_APP_DATA": "realtimeDataPost.aspx",
   "NO_OF_PARAMETERS": "02",
@@ -90,7 +90,7 @@ Called by the device after registration to obtain operational intervals and endp
 |---|---|---|
 | `SYSTEM_ID` | String (8 hex) | Device System Identifier |
 | `SERVER_ADD` | String (max 49) | Server address |
-| `SERVER_PORT` | String (max 6) | Backend HTTP port (`"80"`, `"8080"`, etc.) |
+| `SERVER_PORT` | String (max 6) | Backend HTTPS port (normally `"443"`) |
 | `SERVER_PATH` | String (max 49) | Base URI path prefix (default `"/"`) |
 | `SER_APP_DATA` | String | Telemetry endpoint application name (default `realtimeDataPost.aspx`) |
 | `NO_OF_PARAMETERS` | Hex string | At least two uppercase hex digits; firmware reads the first two (e.g. `02` = 2); max 200 entries |
@@ -222,7 +222,7 @@ CREATE TABLE devices (
     system_id VARCHAR(8) PRIMARY KEY,      -- Wire-order hex string e.g. '5E0D0000'
     imei VARCHAR(15) UNIQUE NOT NULL,       -- Device hardware IMEI
     name VARCHAR(100),
-    server_add VARCHAR(50) DEFAULT 'config.example.com',
+    server_add VARCHAR(50) DEFAULT 'iot.mavinsandeep.co.in',
     server_port VARCHAR(6) DEFAULT '80',
     server_path VARCHAR(50) DEFAULT '/',
     registration_app VARCHAR(38) DEFAULT 'IMIERegistrationPost.aspx',
@@ -256,7 +256,26 @@ CREATE TABLE device_parameters (
     UNIQUE(system_id, param_index)
 );
 
--- 3. Raw Telemetry Records (Time-Series Table)
+-- 3. RTU Relay Modules with independent per-channel coil registers
+CREATE TABLE relay_modules (
+    id BIGSERIAL PRIMARY KEY,
+    system_id VARCHAR(8) REFERENCES devices(system_id) ON DELETE CASCADE,
+    slave_id SMALLINT NOT NULL CHECK (slave_id BETWEEN 1 AND 247),
+    write_function SMALLINT NOT NULL DEFAULT 5 CHECK (write_function = 5),
+    on_value INT NOT NULL DEFAULT 65280 CHECK (on_value = 65280),
+    off_value INT NOT NULL DEFAULT 0 CHECK (off_value = 0),
+    UNIQUE(system_id, slave_id)
+);
+
+CREATE TABLE relay_module_channels (
+    module_id BIGINT REFERENCES relay_modules(id) ON DELETE CASCADE,
+    channel SMALLINT NOT NULL CHECK (channel BETWEEN 1 AND 8),
+    coil_register INT NOT NULL CHECK (coil_register BETWEEN 0 AND 65535),
+    PRIMARY KEY(module_id, channel),
+    UNIQUE(module_id, coil_register)
+);
+
+-- 4. Raw Telemetry Records (Time-Series Table)
 CREATE TABLE telemetry_records (
     id BIGSERIAL PRIMARY KEY,
     system_id VARCHAR(8) REFERENCES devices(system_id),
@@ -270,7 +289,7 @@ CREATE TABLE telemetry_records (
     received_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. Parameter Values
+-- 5. Parameter Values
 CREATE TABLE telemetry_values (
     telemetry_id BIGINT REFERENCES telemetry_records(id) ON DELETE CASCADE,
     param_index INT NOT NULL,
@@ -396,8 +415,8 @@ async def handle_hw_request(request: Request):
     if req_type == "SERVER_DETAILS":
         return JSONResponse({
             "SYSTEM_ID": "00000D5E",
-            "SERVER_ADD": "192.168.0.100",
-            "SERVER_PORT": "8080",
+            "SERVER_ADD": "iot.mavinsandeep.co.in",
+            "SERVER_PORT": "443",
             "SERVER_PATH": "/",
             "SER_APP_DATA": "realtimeDataPost.aspx",
             "NO_OF_PARAMETERS": "02",
@@ -426,6 +445,36 @@ async def handle_hw_request(request: Request):
         })
 
     return JSONResponse({"status": "error", "msg": "unknown request"}, status_code=400)
+
+
+@app.post("/relayModulesConfigPost.aspx")
+async def handle_relay_modules_config(request: Request):
+    params = await request.json()
+    system_id = params.get("SYSTEM_ID")
+    if system_id != "00000D5E":
+        return JSONResponse({"status": "error", "msg": "unknown device"}, status_code=404)
+    # Load per-device module mappings and MQTT credentials from the backend database.
+    return JSONResponse({
+        "TYPE": "RELAY_MODULE_CONFIG",
+        "SYSTEM_ID": system_id,
+        "MQTT_BROKER": "broker.example.net",
+        "MQTT_PORT": 1883,
+        "MQTT_CLIENT_ID": "device-00000D5E",
+        "MQTT_USERNAME": "device-user",
+        "MQTT_PASSWORD": "device-secret",
+        "MQTT_COMMAND_TOPIC": "devices/00000D5E/relay/set",
+        "MQTT_STATUS_TOPIC": "devices/00000D5E/relay/status",
+        "MODULES": [
+            {"slaveId": 1, "channels": 8, "writeFunction": 5,
+             "onValue": 65280, "offValue": 0,
+             "relays": [
+                 {"channel": 1, "register": 0}, {"channel": 2, "register": 1},
+                 {"channel": 3, "register": 2}, {"channel": 4, "register": 3},
+                 {"channel": 5, "register": 4}, {"channel": 6, "register": 5},
+                 {"channel": 7, "register": 6}, {"channel": 8, "register": 7}
+             ]}
+        ]
+    })
 
 
 # =====================================================================
@@ -457,8 +506,11 @@ async def handle_telemetry(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    # Keep the app on an internal port and terminate TLS at the public reverse proxy.
+    uvicorn.run(app, host="127.0.0.1", port=8080)
 ```
+
+The firmware connects to the public HTTPS endpoint on port `443`. In this example, a reverse proxy terminates TLS and forwards requests to the local Uvicorn process on port `8080`; install the public endpoint's trusted CA chain on the modem as `UFS:ca.pem`. The server certificate must be valid for the configured DNS name because the firmware enables SNI and server certificate verification.
 
 ---
 
@@ -480,7 +532,7 @@ Request:
 }
 ```
 
-Return a JSON object using this schema. `MODULES` may contain zero through 16 modules; each configured module uses eight channels. The RTU line is fixed to 9600 baud, 8 data bits, no parity, one stop bit. `coilStart` is the zero-based coil address of channel 1.
+Return a JSON object using this schema. `MODULES` may contain zero through 16 modules; each configured module uses eight channels. One `slaveId` is the RTU address shared by all eight channels on that module. Each `relays` item maps a logical channel to its own Modbus coil register. The RTU line is fixed to 9600 baud, 8 data bits, no parity, one stop bit.
 
 ```json
 {
@@ -494,15 +546,33 @@ Return a JSON object using this schema. `MODULES` may contain zero through 16 mo
   "MQTT_COMMAND_TOPIC": "devices/00000D5E/relay/set",
   "MQTT_STATUS_TOPIC": "devices/00000D5E/relay/status",
   "MODULES": [
-    { "slaveId": 1, "channels": 8, "coilStart": 0 },
-    { "slaveId": 2, "channels": 8, "coilStart": 0 }
+    {
+      "slaveId": 1, "channels": 8, "writeFunction": 5,
+      "onValue": 65280, "offValue": 0,
+      "relays": [
+        { "channel": 1, "register": 0 }, { "channel": 2, "register": 1 },
+        { "channel": 3, "register": 2 }, { "channel": 4, "register": 3 },
+        { "channel": 5, "register": 4 }, { "channel": 6, "register": 5 },
+        { "channel": 7, "register": 6 }, { "channel": 8, "register": 7 }
+      ]
+    },
+    {
+      "slaveId": 2, "channels": 8, "writeFunction": 5,
+      "onValue": 65280, "offValue": 0,
+      "relays": [
+        { "channel": 1, "register": 0 }, { "channel": 2, "register": 1 },
+        { "channel": 3, "register": 2 }, { "channel": 4, "register": 3 },
+        { "channel": 5, "register": 4 }, { "channel": 6, "register": 5 },
+        { "channel": 7, "register": 6 }, { "channel": 8, "register": 7 }
+      ]
+    }
   ]
 }
 ```
 
-`SYSTEM_ID` must match the requesting device. Each `slaveId` must be unique among the configured modules, in the Modbus RTU range 1–247, and distinct from every other slave on the shared RS485 bus. `channels` is currently required to be 8; `coilStart` plus seven must fit in the 16-bit coil address range. The firmware persists this response separately in external EEPROM. An invalid response leaves the separate download flag set so the device retries the endpoint.
+`SYSTEM_ID` must match the requesting device. Each `slaveId` must be unique among configured modules, in the Modbus RTU range 1–247, and distinct from every other slave on the shared RS485 bus. Set the physical module's RTU address to this same `slaveId`; the firmware uses the configured address and does not reprogram it. `channels` is required to be 8. The `relays` array must contain one unique mapping for each channel 1–8; `register` is that channel's zero-based coil register and may be configured independently per channel. `writeFunction` must be `5` (Modbus Write Single Coil), `onValue` must be `65280` (`FF00`), and `offValue` must be `0` (`0000`). Values are decimal JSON integers, transmitted high byte first. The supplied datasheet's default map is channel 1→register 0 through channel 8→register 7. The firmware persists this relay configuration separately from sensor acquisition parameters in external EEPROM. An invalid response leaves the separate download flag set so the device retries the endpoint.
 
-Publish relay commands to `MQTT_COMMAND_TOPIC` as JSON. `module` identifies the configured module by its one-byte Modbus slave ID written as two hexadecimal characters; `channel` is decimal 1–8.
+Publish relay commands to `MQTT_COMMAND_TOPIC` as JSON. `module` identifies the configured module by its one-byte Modbus slave ID written as two hexadecimal characters; `channel` is decimal 1–8 and selects that channel's mapped register.
 
 ```json
 {
@@ -527,13 +597,13 @@ For a command with an optional `commandId`, the device publishes the result to `
 }
 ```
 
-`result` is `ERROR` when the Modbus response fails or does not echo the requested FC05 frame. Keep command and status topic ACLs restricted to this device. The firmware currently uses a non-TLS MQTT connection; configure a broker endpoint reachable over the cellular data connection.
+`result` is `ERROR` when the Modbus response fails or does not echo the requested FC05 frame. Each RTU request is `[slaveId, 05, registerHi, registerLo, valueHi, valueLo, crcLo, crcHi]`. For example, module address `01`, channel 3 mapped to register `2`, ON produces `01 05 00 02 FF 00 2D FA`, matching the datasheet. The firmware computes the CRC from the configured address, register, and state. Keep command and status topic ACLs restricted to this device. The firmware currently uses a non-TLS MQTT connection; configure a broker endpoint reachable over the cellular data connection.
 
-The existing HTTP exchange transports the downloaded broker credentials, so protect the endpoint with the deployment’s device-authentication and TLS strategy where available. The modem MQTT connection currently uses the broker and credentials above without a TLS AT-command setup.
+The HTTPS exchange transports the downloaded broker credentials. Install the server's trusted CA chain on the modem as `UFS:ca.pem`; the firmware configures TLS 1.2 and validates the server certificate. MQTT is a separate connection and currently uses the broker credentials without a TLS AT-command setup.
 
 ## 5. Testing & Verification Guide
 
-You can test this backend server immediately using standard `curl` commands.
+For local backend development, these requests target Uvicorn directly over HTTP. The device itself must connect through the deployed HTTPS reverse proxy described above.
 
 ### Test 1: Fetch System Configuration
 ```bash

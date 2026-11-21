@@ -575,7 +575,7 @@ void gprsTranferDataToServer4G(unsigned char* pucSMSStart, UINT8* pucTransDataBu
 			{
 				if(ucStatus==SIM800_RESPONSE_RESP1)
 				{
-					ucState=GPRS_STATE_CON_PARA_HTTP_SERVER_RESPONSE_HEADER;				
+					ucState=GPRS_STATE_HTTP_SET_SSL_CONTEXT;
 				}
 				if(ucStatus==SIM800_RESPONSE_RESP2)
 				{
@@ -589,6 +589,46 @@ void gprsTranferDataToServer4G(unsigned char* pucSMSStart, UINT8* pucTransDataBu
 				}
 			}
 
+		}
+		break;
+
+		case GPRS_STATE_HTTP_SET_SSL_CONTEXT:
+		{
+			ucSMCmd=1;
+			ucStatus=processModemCmd(&ucSMCmd,5000,0,(UINT8*)"AT+QHTTPCFG=\"sslctxid\",1\r\n",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",NO_OF_RETRY_3,SIM800_RETRY_VALID_RESP_2,&uiLoc,(UINT8*)"HTTP SSL context",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",BUFFER_CLEAR);
+			if(ucSMCmd==0)ucState=(ucStatus==SIM800_RESPONSE_RESP1)?GPRS_STATE_HTTP_SET_SSL_VERSION:GPRS_STATE_WAIT_BEFORE_NEXT_RESET;
+		}
+		break;
+
+		case GPRS_STATE_HTTP_SET_SSL_VERSION:
+		{
+			ucSMCmd=1;
+			ucStatus=processModemCmd(&ucSMCmd,5000,0,(UINT8*)"AT+QSSLCFG=\"sslversion\",1,3\r\n",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",NO_OF_RETRY_3,SIM800_RETRY_VALID_RESP_2,&uiLoc,(UINT8*)"HTTP TLS version",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",BUFFER_CLEAR);
+			if(ucSMCmd==0)ucState=(ucStatus==SIM800_RESPONSE_RESP1)?GPRS_STATE_HTTP_SET_SSL_LEVEL:GPRS_STATE_WAIT_BEFORE_NEXT_RESET;
+		}
+		break;
+
+		case GPRS_STATE_HTTP_SET_SSL_LEVEL:
+		{
+			ucSMCmd=1;
+			ucStatus=processModemCmd(&ucSMCmd,5000,0,(UINT8*)"AT+QSSLCFG=\"seclevel\",1,1\r\n",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",NO_OF_RETRY_3,SIM800_RETRY_VALID_RESP_2,&uiLoc,(UINT8*)"HTTP certificate validation",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",BUFFER_CLEAR);
+			if(ucSMCmd==0)ucState=(ucStatus==SIM800_RESPONSE_RESP1)?GPRS_STATE_HTTP_SET_CA_CERT:GPRS_STATE_WAIT_BEFORE_NEXT_RESET;
+		}
+		break;
+
+		case GPRS_STATE_HTTP_SET_CA_CERT:
+		{
+			ucSMCmd=1;
+			ucStatus=processModemCmd(&ucSMCmd,5000,0,(UINT8*)"AT+QSSLCFG=\"cacert\",1,\"UFS:ca.pem\"\r\n",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",NO_OF_RETRY_3,SIM800_RETRY_VALID_RESP_2,&uiLoc,(UINT8*)"HTTP CA certificate",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",BUFFER_CLEAR);
+			if(ucSMCmd==0)ucState=(ucStatus==SIM800_RESPONSE_RESP1)?GPRS_STATE_HTTP_ENABLE_SNI:GPRS_STATE_WAIT_BEFORE_NEXT_RESET;
+		}
+		break;
+
+		case GPRS_STATE_HTTP_ENABLE_SNI:
+		{
+			ucSMCmd=1;
+			ucStatus=processModemCmd(&ucSMCmd,5000,0,(UINT8*)"AT+QSSLCFG=\"sni\",1,1\r\n",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",NO_OF_RETRY_3,SIM800_RETRY_VALID_RESP_2,&uiLoc,(UINT8*)"HTTP SNI",(UINT8*)"OK",(UINT8*)"ERROR",(UINT8*)"",BUFFER_CLEAR);
+			if(ucSMCmd==0)ucState=(ucStatus==SIM800_RESPONSE_RESP1)?GPRS_STATE_CON_PARA_HTTP_SERVER_RESPONSE_HEADER:GPRS_STATE_WAIT_BEFORE_NEXT_RESET;
 		}
 		break;
 		
@@ -878,7 +918,7 @@ void gprsTranferDataToServer4G(unsigned char* pucSMSStart, UINT8* pucTransDataBu
 			unsigned long ulTempAf=0,ulTempBf=0;;
 			ucGPRSConStatus=1;
 			ucGeneralPurposeBuffer[0]=0x00;
-			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"http://",GENERAL_PURPOSE_BUFF_SIZE);
+			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"https://",GENERAL_PURPOSE_BUFF_SIZE);
 			concatStirngsToStr1(ucGeneralPurposeBuffer,ucSerAdd,GENERAL_PURPOSE_BUFF_SIZE);
 			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)":",GENERAL_PURPOSE_BUFF_SIZE);
 			concatStirngsToStr1(ucGeneralPurposeBuffer,ucSerPort,GENERAL_PURPOSE_BUFF_SIZE);
@@ -932,7 +972,7 @@ void gprsTranferDataToServer4G(unsigned char* pucSMSStart, UINT8* pucTransDataBu
 			unsigned long ulTempAf=0,ulTempBf=0;;
 			ucGPRSConStatus=1;
 			ucGeneralPurposeBuffer[0]=0x00;
-			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"http://",GENERAL_PURPOSE_BUFF_SIZE);
+			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"https://",GENERAL_PURPOSE_BUFF_SIZE);
 			concatStirngsToStr1(ucGeneralPurposeBuffer,ucSerAdd,GENERAL_PURPOSE_BUFF_SIZE);
 			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)":",GENERAL_PURPOSE_BUFF_SIZE);
 			concatStirngsToStr1(ucGeneralPurposeBuffer,ucSerPort,GENERAL_PURPOSE_BUFF_SIZE);

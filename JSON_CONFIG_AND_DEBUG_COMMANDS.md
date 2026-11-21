@@ -1,14 +1,14 @@
 # IoT Control — JSON Specification & Command Reference
 
 **Firmware Target:** Renesas RL78/G13 (`R5F100PL`)  
-**Architecture:** Bare-metal, interrupt-driven, cellular-modem HTTP transport (EC200U)
-**Document Scope:** JSON schemas and command details documented here must be interpreted against the firmware implementation. Configuration download uses the cellular HTTP client.
+**Architecture:** Bare-metal, interrupt-driven, cellular-modem HTTPS transport (EC200U)
+**Document Scope:** JSON schemas and command details documented here must be interpreted against the firmware implementation. Backend configuration and telemetry exchanges use the cellular HTTPS client; MQTT relay control uses its separate broker connection.
 
 ---
 
 ## 1. Transport & Framing Specification
 
-* **Port:** UART2 (Debug Console) / cellular modem HTTP.
+* **Port:** UART2 (Debug Console) / cellular modem HTTPS.
 * **UART Configuration:** Default `115200 bps`, `8` data bits, `No` parity, `1` stop bit (`8N1`).
 * **Debug input:** The firmware recognizes JSON `REQ` objects and legacy `$COMMAND#` tokens. The JSON debug interface handles `GET_SYS_INFO` and `PARA_VALUE`.
 
@@ -31,7 +31,7 @@ flowchart TD
 
 ### A. System Configuration (`SERVER_DETAILS` / `SYS_Config`)
 
-Downloaded by HTTP POST to the system-configuration application path. The device sends `{"TYPE":"SERVER_DETAILS","SYSTEM_ID":"<8-char hex>"}` and applies a JSON response only when `SYSTEM_ID` matches the registered device. The active firmware maps supported response fields to legacy command tokens internally.
+Downloaded by HTTPS POST to the system-configuration application path. The device sends `{"TYPE":"SERVER_DETAILS","SYSTEM_ID":"<8-char hex>"}` and applies a JSON response only when `SYSTEM_ID` matches the registered device. The active firmware maps supported response fields to legacy command tokens internally. The server CA chain must be provisioned on the modem as `UFS:ca.pem`.
 
 #### JSON Schema
 ```json
@@ -91,8 +91,8 @@ Downloaded by HTTP POST to the system-configuration application path. The device
 ```json
 {
   "SYSTEM_ID": "00000D5E",
-  "SERVER_ADD": "config.example.com",
-  "SERVER_PORT": "80",
+  "SERVER_ADD": "iot.mavinsandeep.co.in",
+  "SERVER_PORT": "443",
   "SERVER_PATH": "/",
   "SER_APP_DATA": "realtimeDataPost.aspx",
   "NO_OF_PARAMETERS": "0A",
@@ -107,7 +107,7 @@ The system configuration request sends the numeric system ID as eight uppercase 
 
 ### B. DAQ Parameter Configuration (`PARA_CONFIG`)
 
-Downloaded by HTTP POST to the parameter-configuration application path in batches of up to 10 entries. The request contains `TYPE`, `SYS_ID`, `FROM`, and `TO`; the response contains a `PARA` array.
+Downloaded by HTTPS POST to the parameter-configuration application path in batches of up to 10 entries. The request contains `TYPE`, `SYS_ID`, `FROM`, and `TO`; the response contains a `PARA` array.
 
 #### JSON Schema
 ```json
@@ -244,8 +244,8 @@ flowchart LR
 Configuration downloads use JSON POST requests to configured application paths in this firmware.
 
 #### 1. Unit System Configuration Request (`SERVER_DETAILS`)
-* **Transport:** HTTP POST
-* **Target Path:** `http://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_SYS_CONFIG>` (default application: `systemConfigPost.aspx`)
+* **Transport:** HTTPS POST (TLS 1.2 with SNI; server certificate verified against `UFS:ca.pem`)
+* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_SYS_CONFIG>` (normally port `443`; default application: `systemConfigPost.aspx`)
 * **JSON Schema:**
 ```json
 {
@@ -277,8 +277,8 @@ Configuration downloads use JSON POST requests to configured application paths i
 ---
 
 #### 2. DAQ Parameter Configuration Request (`PARA_CONFIG`)
-* **Transport:** HTTP POST
-* **Target Path:** `http://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_PARA_CONFIG>`
+* **Transport:** HTTPS POST
+* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_PARA_CONFIG>`
 * **JSON Schema:**
 ```json
 {
@@ -322,7 +322,7 @@ Configuration downloads use JSON POST requests to configured application paths i
 ---
 
 #### 3. IMEI Device Registration Request (`imieRegistration`)
-* **Transport:** HTTP POST (form-encoded)
+* **Transport:** HTTPS POST (form-encoded)
 * **Form POST:** `IMIENumber=865510081833552`
 
 Registration is parsed as the legacy text response `$SysID=<8 hex characters>#`, not as JSON.
@@ -334,7 +334,7 @@ Registration is parsed as the legacy text response `$SysID=<8 hex characters>#`,
 This is a separate configuration download after the system and parameter configuration stages. It configures multiple 12 V Modbus RTU 8 channel modules independently of sensor parameters and the controller’s local I/O.
 
 * **Endpoint:** `relayModulesConfigPost.aspx`
-* **Method:** HTTP POST with a JSON body
+* **Method:** HTTPS POST with a JSON body
 * **Request:**
 
 ```json
@@ -344,7 +344,7 @@ This is a separate configuration download after the system and parameter configu
 }
 ```
 
-* **Response:** `SYSTEM_ID`, MQTT broker address and port, client credentials, command and status topics, and a `MODULES` array. The firmware supports up to 16 modules, eight channels per module, unique Modbus slave IDs from 1 through 247, and a zero-based `coilStart` address. Module slave IDs must also be unique on the shared RS485 bus. Modbus serial settings are fixed at 9600 8N1.
+* **Response:** `SYSTEM_ID`, MQTT broker address and port, client credentials, command and status topics, and a `MODULES` array. This endpoint is separate from parameter acquisition configuration: `PARA` describes sensor/register acquisition; `MODULES` describes relay RTU write frames. The firmware supports up to 16 modules, eight channels per module, and unique Modbus slave IDs from 1 through 247. One module `slaveId` is shared by its eight relays; its `relays` array maps every logical channel to its own coil register. Module slave IDs must also be unique on the shared RS485 bus. Modbus serial settings are fixed at 9600 8N1. Each module specifies `writeFunction: 5`, `onValue: 65280` (`FF00`), and `offValue: 0` (`0000`) as decimal JSON integers.
 
 ```json
 {
@@ -358,10 +358,21 @@ This is a separate configuration download after the system and parameter configu
   "MQTT_COMMAND_TOPIC": "devices/00000D5E/relay/set",
   "MQTT_STATUS_TOPIC": "devices/00000D5E/relay/status",
   "MODULES": [
-    { "slaveId": 1, "channels": 8, "coilStart": 0 }
+    {
+      "slaveId": 1, "channels": 8, "writeFunction": 5,
+      "onValue": 65280, "offValue": 0,
+      "relays": [
+        { "channel": 1, "register": 0 }, { "channel": 2, "register": 1 },
+        { "channel": 3, "register": 2 }, { "channel": 4, "register": 3 },
+        { "channel": 5, "register": 4 }, { "channel": 6, "register": 5 },
+        { "channel": 7, "register": 6 }, { "channel": 8, "register": 7 }
+      ]
+    }
   ]
 }
 ```
+
+One `slaveId` is the RTU address for the whole 8 channel module. Each `relays` item assigns a logical channel to its own zero-based coil register. The datasheet's default map is channel 1 → register 0 through channel 8 → register 7. The firmware requires exactly one unique register mapping for each channel 1–8.
 
 The firmware configures MQTT 3.1.1 and direct message receive mode on the modem, then opens the broker, connects with the configured credentials, and subscribes to `MQTT_COMMAND_TOPIC` at QoS 1. It handles disconnect indications and retries the connection. Send commands in this form (`module` is the slave ID as two hex characters; `channel` is decimal 1–8):
 
@@ -374,7 +385,9 @@ The firmware configures MQTT 3.1.1 and direct message receive mode on the modem,
 }
 ```
 
-`state` accepts `ON` or `OFF`. The firmware sends Modbus RTU function 05 to `coilStart + channel - 1`, with value `FF00` for ON and `0000` for OFF. It checks the response echo and publishes a QoS 1 result using `QMTPUBEX` to `MQTT_STATUS_TOPIC`:
+`state` accepts `ON` or `OFF`. The firmware uses the selected module's `writeFunction` and that channel's mapped register, writing the configured `onValue` or `offValue` high byte first. The datasheet specifies function `5`, `onValue: 65280` (`FF00`), and `offValue: 0` (`0000`). It checks the response echo and publishes a QoS 1 result using `QMTPUBEX` to `MQTT_STATUS_TOPIC`:
+
+For module address `01`, channel 3 mapped to register `2`, an ON command yields RTU bytes `01 05 00 02 FF 00 2D FA`. The firmware computes the CRC bytes for each command.
 
 ```json
 {
@@ -390,7 +403,7 @@ The result is `ERROR` when the Modbus operation fails. Only one command is proce
 
 ### B. Telemetry & Sensor Data Upload (`DataTx` / `data.c`)
 
-Telemetry records are uploaded periodically using an HTTP POST to `http://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (default application: `realtimeDataPost.aspx`).
+Telemetry records are uploaded periodically using an HTTPS POST to `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (normally port `443`; default application: `realtimeDataPost.aspx`). The server's CA chain must be provisioned in the modem as `UFS:ca.pem`.
 
 * **Header:** `Content-Type: application/x-www-form-urlencoded`
 * **Payload Structure:**
