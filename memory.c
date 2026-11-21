@@ -268,7 +268,7 @@ void readDataFromMemory(void)
 				
 		storeStringToEeprom((UINT8*)"iot.mavinsandeep.co.in",EEPROM_LOC_DATA_SER_ADD,48);
 		storeStringToEeprom((UINT8*)"/",EEPROM_LOC_DATA_SER_PATH,98);
-		storeStringToEeprom((UINT8*)"8085",EEPROM_LOC_DATA_SER_PORT,8);
+		storeStringToEeprom((UINT8*)"443",EEPROM_LOC_DATA_SER_PORT,8);
 		storeStringToEeprom((UINT8*)"api/register",EEPROM_LOC_SER_APP_REG,38);
 		storeStringToEeprom((UINT8*)"api/system-config",EEPROM_LOC_SER_APP_SYS_CONFIG,38);
 		storeStringToEeprom((UINT8*)"api/param-config",EEPROM_LOC_SER_APP_PARA_CONFIG,38);
@@ -601,7 +601,7 @@ void readDataFromMemory(void)
 		{
 			storeStringToEeprom((UINT8*)"iot.mavinsandeep.co.in",EEPROM_LOC_DATA_SER_ADD,48);
 			storeStringToEeprom((UINT8*)"/",EEPROM_LOC_DATA_SER_PATH,98);
-			storeStringToEeprom((UINT8*)"8085",EEPROM_LOC_DATA_SER_PORT,8);
+			storeStringToEeprom((UINT8*)"443",EEPROM_LOC_DATA_SER_PORT,8);
 			storeStringToEeprom((UINT8*)"api/register",EEPROM_LOC_SER_APP_REG,38);
 			storeStringToEeprom((UINT8*)"api/system-config",EEPROM_LOC_SER_APP_SYS_CONFIG,38);
 			storeStringToEeprom((UINT8*)"api/param-config",EEPROM_LOC_SER_APP_PARA_CONFIG,38);

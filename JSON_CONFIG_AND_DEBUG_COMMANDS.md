@@ -52,7 +52,7 @@ Downloaded by HTTPS POST to the system-configuration application path. The devic
     },
     "SERVER_PORT": {
       "type": "string",
-      "description": "HTTPS server port (default 8085)",
+      "description": "Public HTTPS server port (default 443)",
       "maxLength": 6
     },
     "SERVER_PATH": {
@@ -92,7 +92,7 @@ Downloaded by HTTPS POST to the system-configuration application path. The devic
 {
   "SYSTEM_ID": "00000D5E",
   "SERVER_ADD": "iot.mavinsandeep.co.in",
-  "SERVER_PORT": "8085",
+  "SERVER_PORT": "443",
   "SERVER_PATH": "/",
   "SER_APP_DATA": "api/data",
   "NO_OF_PARAMETERS": "0A",
@@ -245,7 +245,7 @@ Configuration downloads use JSON POST requests to configured application paths i
 
 #### 1. Unit System Configuration Request (`SERVER_DETAILS`)
 * **Transport:** HTTPS POST (TLS 1.2 with SNI; server certificate verified against `UFS:ca.pem`)
-* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/api/system-config` (default `https://iot.mavinsandeep.co.in:8085/api/system-config`)
+* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/api/system-config` (default `https://iot.mavinsandeep.co.in/api/system-config`)
 * **JSON Schema:**
 ```json
 {
@@ -404,7 +404,7 @@ The result is `ERROR` when the Modbus operation fails. Only one command is proce
 
 ### B. Telemetry & Sensor Data Upload (`DataTx` / `data.c`)
 
-Telemetry records are uploaded periodically using an HTTPS POST to `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (default `https://iot.mavinsandeep.co.in:8085/api/data`). The server's CA chain must be provisioned in the modem as `UFS:ca.pem`.
+Telemetry records are uploaded periodically using an HTTPS POST to `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (default `https://iot.mavinsandeep.co.in/api/data`). Cloudflare Tunnel terminates public HTTPS and forwards requests to the HTTP backend on port `8085`. The tunnel certificate's CA chain must be provisioned in the modem as `UFS:ca.pem`.
 
 * **Header:** `Content-Type: application/x-www-form-urlencoded`
 * **Payload Structure:**

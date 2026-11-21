@@ -6,7 +6,7 @@ This guide describes the backend requests and responses implemented by this firm
 
 ## 1. System Architecture & Communication Flow
 
-The device communicates with backend endpoints over HTTPS through its cellular modem (2G or 4G mode). The modem uses TLS 1.2 with SNI and validates the server certificate using a CA certificate provisioned in modem UFS as `ca.pem`. The firmware default is `https://iot.mavinsandeep.co.in:8085`; that port must accept HTTPS.
+The device communicates with backend endpoints over HTTPS through its cellular modem (2G or 4G mode). The modem uses TLS 1.2 with SNI and validates the server certificate using a CA certificate provisioned in modem UFS as `ca.pem`. The firmware connects to the public Cloudflare Tunnel endpoint at `https://iot.mavinsandeep.co.in` on port `443`. Cloudflare Tunnel forwards requests over HTTP to the backend on port `8085`.
 
 ```mermaid
 sequenceDiagram
@@ -39,7 +39,7 @@ sequenceDiagram
 
 ## 2. API Endpoints Specification
 
-All routes must be served on the configured host and port (default HTTPS port `8085`). The CA certificate chain required to validate the server must be installed in the modem file system as `UFS:ca.pem` before these exchanges can succeed.
+All routes must be served on the configured host and public HTTPS port (default `443`). Cloudflare Tunnel forwards them to the backend's HTTP listener on port `8085`. The CA certificate chain required to validate the public server certificate must be installed in the modem file system as `UFS:ca.pem` before these exchanges can succeed.
 
 ---
 
@@ -76,7 +76,7 @@ Called by the device after registration to obtain operational intervals and endp
 {
   "SYSTEM_ID": "00000D5E",
   "SERVER_ADD": "iot.mavinsandeep.co.in",
-  "SERVER_PORT": "8085",
+  "SERVER_PORT": "443",
   "SERVER_PATH": "/",
   "SER_APP_DATA": "api/data",
   "NO_OF_PARAMETERS": "02",
@@ -90,7 +90,7 @@ Called by the device after registration to obtain operational intervals and endp
 |---|---|---|
 | `SYSTEM_ID` | String (8 hex) | Device System Identifier |
 | `SERVER_ADD` | String (max 49) | Server address |
-| `SERVER_PORT` | String (max 6) | Backend HTTPS port (default `"8085"`) |
+| `SERVER_PORT` | String (max 6) | Public HTTPS port (default `"443"`) |
 | `SERVER_PATH` | String (max 49) | Base URI path prefix (default `"/"`) |
 | `SER_APP_DATA` | String | Telemetry endpoint path (default `api/data`) |
 | `NO_OF_PARAMETERS` | Hex string | At least two uppercase hex digits; firmware reads the first two (e.g. `02` = 2); max 200 entries |
@@ -223,7 +223,7 @@ CREATE TABLE devices (
     imei VARCHAR(15) UNIQUE NOT NULL,       -- Device hardware IMEI
     name VARCHAR(100),
     server_add VARCHAR(50) DEFAULT 'iot.mavinsandeep.co.in',
-    server_port VARCHAR(6) DEFAULT '8085',
+    server_port VARCHAR(6) DEFAULT '443',
     server_path VARCHAR(50) DEFAULT '/',
     registration_app VARCHAR(38) DEFAULT 'api/register',
     system_config_app VARCHAR(38) DEFAULT 'api/system-config',
@@ -416,7 +416,7 @@ async def handle_hw_request(request: Request):
         return JSONResponse({
             "SYSTEM_ID": "00000D5E",
             "SERVER_ADD": "iot.mavinsandeep.co.in",
-            "SERVER_PORT": "8085",
+            "SERVER_PORT": "443",
             "SERVER_PATH": "/",
             "SER_APP_DATA": "api/data",
             "NO_OF_PARAMETERS": "02",
@@ -510,7 +510,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8085)
 ```
 
-The firmware connects to `https://iot.mavinsandeep.co.in:8085`. The HTTPS listener must terminate TLS on port `8085` and forward these routes to the backend process. Install the listener's trusted CA chain on the modem as `UFS:ca.pem`. The server certificate must be valid for the configured DNS name because the firmware enables SNI and server certificate verification. The Uvicorn snippet is a local HTTP development server; it needs TLS termination in front of it for device traffic.
+The firmware connects to `https://iot.mavinsandeep.co.in` on port `443`. Cloudflare Tunnel terminates TLS and forwards requests over HTTP to the backend process on port `8085` (the Uvicorn snippet is a local HTTP development server). Install the public tunnel endpoint's trusted CA chain on the modem as `UFS:ca.pem`. The certificate must be valid for the configured DNS name because the firmware enables SNI and server certificate verification.
 
 ---
 
@@ -603,7 +603,7 @@ The HTTPS exchange transports the downloaded broker credentials. Install the ser
 
 ## 5. Testing & Verification Guide
 
-For local backend development, these requests target Uvicorn directly over HTTP on port `8085`. The device itself requires HTTPS on `iot.mavinsandeep.co.in:8085`.
+For local backend development, these requests target Uvicorn directly over HTTP on port `8085`. Devices connect over HTTPS to `iot.mavinsandeep.co.in` on port `443`; Cloudflare Tunnel forwards the traffic to the HTTP backend.
 
 ### Test 1: Fetch System Configuration
 ```bash
