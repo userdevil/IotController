@@ -78,7 +78,7 @@ void displayScreen(void)
 		
 		
 			
-			drawdSenZlogo();
+			drawDeviceLogo();
 			glcdWriteLongCallibri(2,35,ulSystemID,5,11,1);
 			
 			intToArray(sRTC.ucHours,2,5,&uisTime[0]);
@@ -140,7 +140,7 @@ void displayScreen(void)
 		case SCREEN_PARA :
 	
 			glcdFillScreen(OFF);
-			glcdWriteStrCallibri(30,0,(unsigned char*)"e - SenZ",12,ON);
+			glcdWriteStrCallibri(30,0,(unsigned char*)"VANMEN",12,ON);
 			glcdWriteStrCallibri(80,0,(unsigned char*)"#",12,ON);
 			glcdWriteLongCallibri(86,0,ulSystemID,6,11,1);
         		glcdDrawLine(0,11,127,11,1);
@@ -188,7 +188,7 @@ void displayScreen(void)
 		case SCREEN_DEBUG:
 		
 			glcdFillScreen(OFF);
-			glcdWriteStrCallibri(30,0,(unsigned char*)"e - SenZ",12,ON);
+			glcdWriteStrCallibri(30,0,(unsigned char*)"VANMEN",12,ON);
 			glcdWriteStrCallibri(80,0,(unsigned char*)"#",12,ON);
 			glcdWriteLongCallibri(86,0,ulSystemID,6,11,1);
         		glcdDrawLine(0,11,127,11,1);

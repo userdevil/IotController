@@ -420,7 +420,7 @@ UINT8 checkParaForErrorAndSendAlert(UINT8 ulParaCntrF)
                     {
 			    
 			clearGeneralPurposeBuffer();
-			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"e-SenZ Alert, Para : ",GENERAL_PURPOSE_BUFF_SIZE);
+			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"Device Alert, Para : ",GENERAL_PURPOSE_BUFF_SIZE);
 			concatStirngsToStr1(ucGeneralPurposeBuffer,sParaConfig[ulParaCntrF].para.ucParaStr,GENERAL_PURPOSE_BUFF_SIZE);
 			getStrLength(ucGeneralPurposeBuffer,&ulTempF);//LENGTH OF DATA
 			concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)", value = ",GENERAL_PURPOSE_BUFF_SIZE);

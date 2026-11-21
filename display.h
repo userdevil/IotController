@@ -89,6 +89,6 @@ unsigned char glcdWriteFloatCallibri(unsigned char ucX, unsigned char ucY,float 
 unsigned char glcdWriteFloat(unsigned char ucX, unsigned char ucY,float fData,unsigned char ucNoOfDigitsReal,unsigned char ucNoOfDigitFraction,unsigned char ucSize,unsigned char ucPixelStatus);
 
 
-unsigned char drawdSenZlogo(void);
+unsigned char drawDeviceLogo(void);
 
 #endif
