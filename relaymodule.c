@@ -367,10 +367,10 @@ void downloadRelayModuleConfig(void)
 	jsonAddStrField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"TYPE",(UINT8*)"RELAY_MODULE_CONFIG",&ucFirst);
 	jsonAddHexField(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE,(UINT8*)"SYSTEM_ID",ulSystemID,8,&ucFirst);
 	jsonEnd(ucGeneralPurposeBuffer,GENERAL_PURPOSE_BUFF_SIZE);
-	prepareGPRSTransmitPacket(ucGeneralPurposeBuffer,ucGPRSTransmitBuffer,ucSerAdd,ucSerPort,ucSerPath,(UINT8*)"relayModulesConfigPost.aspx",GPRS_TRANS_MODE_POST);
+	prepareGPRSTransmitPacket(ucGeneralPurposeBuffer,ucGPRSTransmitBuffer,ucSerAdd,ucSerPort,ucSerPath,(UINT8*)"api/relay-config",GPRS_TRANS_MODE_POST);
 	ucTransferFlag=0;
 	ucDataTransferSuccess=0;
-	tranferDataToServer(&ucTransferFlag,ucGPRSTransmitBuffer,(UINT8*)"relayModulesConfigPost.aspx",GPRS_TRANS_MODE_POST,GPRS_CONNECTION_CLOSE);
+	tranferDataToServer(&ucTransferFlag,ucGPRSTransmitBuffer,(UINT8*)"api/relay-config",GPRS_TRANS_MODE_POST,GPRS_CONNECTION_CLOSE);
 }
 
 static UINT8 relayCaptureMqttCommand(void)

@@ -167,7 +167,10 @@ void main(void)
    writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_INTERNET_SOURCE,ucInternetSource);
 
    ucMS_WAIT_BEFORE_RESET=1000;	
-   prepareGPRSTransmitPacket((UINT8*)"imienumber=861694036179057",ucGPRSTransmitBuffer,ucSerAdd,ucSerPort,(UINT8*)"msd",(UINT8*)"realTimeDatapost.aspx",GPRS_TRANS_MODE_POST);
+   clearGeneralPurposeBuffer();
+   concatStirngsToStr1(ucGeneralPurposeBuffer,(UINT8*)"IMIENumber=",GENERAL_PURPOSE_BUFF_SIZE);
+   concatStirngsToStr1(ucGeneralPurposeBuffer,ucIMIENumber,GENERAL_PURPOSE_BUFF_SIZE);
+   prepareGPRSTransmitPacket(ucGeneralPurposeBuffer,ucGPRSTransmitBuffer,ucSerAdd,ucSerPort,ucSerPath,ucSerAppReg,GPRS_TRANS_MODE_POST);
   
    glcdWriteStrCallibri(1,55,(UINT8*)"Init modem......",11,1);
    glcdUpdate();
@@ -182,7 +185,7 @@ void main(void)
 	   R_WDT_Restart();
 	   
 	   
-	   gprsTranferDataToServer4G(&ucModemFlag,ucGPRSTransmitBuffer,(UINT8*)"boardtestpost.aspx",GPRS_TRANS_MODE_POST,GPRS_CONNECTION_CLOSE);
+	   gprsTranferDataToServer4G(&ucModemFlag,ucGPRSTransmitBuffer,ucSerAppReg,GPRS_TRANS_MODE_POST,GPRS_CONNECTION_CLOSE);
 	   
 		if(ucUartDebugRecDataFlag==1)
 		{
@@ -216,7 +219,7 @@ void main(void)
    ucRS485BusFlag=RS485_CON_DATA_ACQ;
    
     glcdFillScreen(0);
-    drawdSenZlogo();
+    drawDeviceLogo();
     glcdUpdate();
     
     //delete
@@ -394,7 +397,7 @@ void R_MAIN_UserInit(void)
     ucDispBackFlag=1;
     lcdInit();
     lcdClear();
-    drawdSenZlogo();
+    drawDeviceLogo();
     glcdUpdate();
     
     
@@ -443,9 +446,7 @@ void R_MAIN_UserInit(void)
     //i2c
     R_IICA0_Create();
     
-    debugSendStr((UINT8*)"\r\r\r\rDevice Controller");
-    debugSendStr((UINT8*)"\re-SenZ ");
-    debugSendStr((UINT8*)"\rCode version :  X50_2");
+    debugSendStr((UINT8*)"\r\r\r\rVANMEN IoT Controller");
     
   
     flashInit();
@@ -465,8 +466,7 @@ void R_MAIN_UserInit(void)
 		  	ucTempA=100;
 	    }
     }
-    else
-    	debugSendStr((UINT8*)"\rFlash OK ");
+
 	    
     //start external int
     R_INTC7_Start();

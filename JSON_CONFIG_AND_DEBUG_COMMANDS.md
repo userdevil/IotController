@@ -52,7 +52,7 @@ Downloaded by HTTPS POST to the system-configuration application path. The devic
     },
     "SERVER_PORT": {
       "type": "string",
-      "description": "Server port string (e.g., '80', '8080')",
+      "description": "HTTPS server port (default 8085)",
       "maxLength": 6
     },
     "SERVER_PATH": {
@@ -92,9 +92,9 @@ Downloaded by HTTPS POST to the system-configuration application path. The devic
 {
   "SYSTEM_ID": "00000D5E",
   "SERVER_ADD": "iot.mavinsandeep.co.in",
-  "SERVER_PORT": "443",
+  "SERVER_PORT": "8085",
   "SERVER_PATH": "/",
-  "SER_APP_DATA": "realtimeDataPost.aspx",
+  "SER_APP_DATA": "api/data",
   "NO_OF_PARAMETERS": "0A",
   "DATA_ACQ_MINUTES": "00000001",
   "DATA_TRANS_MINUTES": "00000005"
@@ -245,7 +245,7 @@ Configuration downloads use JSON POST requests to configured application paths i
 
 #### 1. Unit System Configuration Request (`SERVER_DETAILS`)
 * **Transport:** HTTPS POST (TLS 1.2 with SNI; server certificate verified against `UFS:ca.pem`)
-* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_SYS_CONFIG>` (normally port `443`; default application: `systemConfigPost.aspx`)
+* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/api/system-config` (default `https://iot.mavinsandeep.co.in:8085/api/system-config`)
 * **JSON Schema:**
 ```json
 {
@@ -278,7 +278,7 @@ Configuration downloads use JSON POST requests to configured application paths i
 
 #### 2. DAQ Parameter Configuration Request (`PARA_CONFIG`)
 * **Transport:** HTTPS POST
-* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SERVER_APP_PARA_CONFIG>`
+* **Target Path:** `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/api/param-config`
 * **JSON Schema:**
 ```json
 {
@@ -322,6 +322,7 @@ Configuration downloads use JSON POST requests to configured application paths i
 ---
 
 #### 3. IMEI Device Registration Request (`imieRegistration`)
+* **Endpoint:** `POST /api/register`
 * **Transport:** HTTPS POST (form-encoded)
 * **Form POST:** `IMIENumber=865510081833552`
 
@@ -333,7 +334,7 @@ Registration is parsed as the legacy text response `$SysID=<8 hex characters>#`,
 
 This is a separate configuration download after the system and parameter configuration stages. It configures multiple 12 V Modbus RTU 8 channel modules independently of sensor parameters and the controller’s local I/O.
 
-* **Endpoint:** `relayModulesConfigPost.aspx`
+* **Endpoint:** `POST /api/relay-config`
 * **Method:** HTTPS POST with a JSON body
 * **Request:**
 
@@ -403,7 +404,7 @@ The result is `ERROR` when the Modbus operation fails. Only one command is proce
 
 ### B. Telemetry & Sensor Data Upload (`DataTx` / `data.c`)
 
-Telemetry records are uploaded periodically using an HTTPS POST to `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (normally port `443`; default application: `realtimeDataPost.aspx`). The server's CA chain must be provisioned in the modem as `UFS:ca.pem`.
+Telemetry records are uploaded periodically using an HTTPS POST to `https://<SERVER_ADD>:<SERVER_PORT>/<SERVER_PATH>/<SER_APP_DATA>` (default `https://iot.mavinsandeep.co.in:8085/api/data`). The server's CA chain must be provisioned in the modem as `UFS:ca.pem`.
 
 * **Header:** `Content-Type: application/x-www-form-urlencoded`
 * **Payload Structure:**

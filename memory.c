@@ -9,6 +9,8 @@
 #include "data.h"
 #include "rtc.h"
 
+#define SHOW_VERBOSE_STARTUP 0
+
 
 UINT8 ucFlashID;
 UINT8 	ucBoardTestStatus;
@@ -185,11 +187,9 @@ void readDataFromMemory(void)
 	
 	
 	
-	UARTSendStr(UART_DEBUG,(UINT8 *)" \r Fetching data ");	
 	ucStatusF=readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_EEPROM_MEM_STATUS,&ucBoardMemeoryStatus);
 	if(ucBoardMemeoryStatus!='e')// if the stored char is not 'e' then load all default config into eeprom
 	{
-		UARTSendStr(UART_DEBUG,(UINT8 *)" \r Resetting EEPORM data ");	
 		
 		ucSystemRegistrationStatus=0;
 		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_SYSTEM_REG_STATUS,ucSystemRegistrationStatus);
@@ -266,13 +266,14 @@ void readDataFromMemory(void)
 		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_SMS_SENT_CNTR,ucSMSSentNo);
 		
 				
-		storeStringToEeprom((UINT8*)"www.devicevps3.in",EEPROM_LOC_DATA_SER_ADD,48);
+		storeStringToEeprom((UINT8*)"iot.mavinsandeep.co.in",EEPROM_LOC_DATA_SER_ADD,48);
 		storeStringToEeprom((UINT8*)"/",EEPROM_LOC_DATA_SER_PATH,98);
-		storeStringToEeprom((UINT8*)"80",EEPROM_LOC_DATA_SER_PORT,8);
-		storeStringToEeprom((UINT8*)"IMIERegistrationPost.aspx",EEPROM_LOC_SER_APP_REG,38);
-		storeStringToEeprom((UINT8*)"systemConfigPost.aspx",EEPROM_LOC_SER_APP_SYS_CONFIG,38);
-		storeStringToEeprom((UINT8*)"paraconfigPost.aspx",EEPROM_LOC_SER_APP_PARA_CONFIG,38);
-		storeStringToEeprom((UINT8*)"realtimeDataPost.aspx",EEPROM_LOC_SER_APP_REC_DATA,38);
+		storeStringToEeprom((UINT8*)"8085",EEPROM_LOC_DATA_SER_PORT,8);
+		storeStringToEeprom((UINT8*)"api/register",EEPROM_LOC_SER_APP_REG,38);
+		storeStringToEeprom((UINT8*)"api/system-config",EEPROM_LOC_SER_APP_SYS_CONFIG,38);
+		storeStringToEeprom((UINT8*)"api/param-config",EEPROM_LOC_SER_APP_PARA_CONFIG,38);
+		storeStringToEeprom((UINT8*)"api/data",EEPROM_LOC_SER_APP_REC_DATA,38);
+		writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_SERVER_API_VERSION,SERVER_API_VERSION_CURRENT);
 				
 		//1003
 		
@@ -403,12 +404,10 @@ void readDataFromMemory(void)
 	
 	//1016
 	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_ENABLE_CSV,&ucEnableCSV);
-	UARTSendStr(UART_DEBUG,(UINT8 *)"\r ucEnableCSV = ");
-	UARTSendLong(UART_DEBUG,ucEnableCSV,2);
 	
 	
 	
-	if(ucEnableCSV==0)
+	if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 	UARTSendStr(UART_DEBUG,(UINT8 *)" \r------------------------------- board data -------------------------------");	
 		
 	
@@ -418,7 +417,7 @@ void readDataFromMemory(void)
 	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_BOARD_TEST_DATE,&ucBoardTestDate);
 	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_BOARD_TEST_MONTH,&ucBoardTestMonth);
 	readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_BOARD_TEST_YEAR,&ucBoardTestYear);
-	if(ucEnableCSV==0)
+	if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 	{
 		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Board Test Status : ");
 		UARTSendLong(UART_DEBUG,ucBoardTestStatus,1);
@@ -524,23 +523,9 @@ void readDataFromMemory(void)
 	readExtEEPROMFloat(EEPROM_ADD,EEPROM_LOC_STORE_PARA_20_LOC,&fParaStoreLocation20);
 	
 	readExtEEPROMLong(EEPROM_ADD,EEPROM_LOC_INT_CNTR,&ulIntCntr);
-	if(ucEnableCSV==0)
-	{
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Board Reg Status : ");
-		UARTSendLong(UART_DEBUG,ucSystemRegistrationStatus,1);
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Sytem id ID :");
-		UARTSendLong(UART_DEBUG,ulSystemID,6);
-		
-		//1025
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r IMIE : ");
-		for(ucData=0;ucData<15;ucData++)
-		{
-			readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_STORED_IMIE_NUMBER+ucData,&ucIMIENumber[ucData]);
-			UARTSendChar(UART_DEBUG,ucIMIENumber[ucData]);
-		}
-		ucIMIENumber[15]=0x00;
-		
-	}
+	for(ucData=0;ucData<15;ucData++)
+		readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_STORED_IMIE_NUMBER+ucData,&ucIMIENumber[ucData]);
+	ucIMIENumber[15]=0x00;
 	if(ulSystemID==0)
 	{
 		ucSystemDownloadUnitConfig=1;
@@ -551,7 +536,7 @@ void readDataFromMemory(void)
 	
 	
 	
-	if(ucEnableCSV==0)
+	if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 	{
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\r No Of parameters :");
 	UARTSendLong(UART_DEBUG,ulSystemNoOfParameters,3);
@@ -577,7 +562,7 @@ void readDataFromMemory(void)
 		ulFlashFileSaveLocation=0;
 		ulFlashFileSentLocation=0;
 	}
-	if(ucEnableCSV==0)
+	if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 	{
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\r Flash Save Cntr :");
 	UARTSendLong(UART_DEBUG,ulFlashFileSaveLocation,5);
@@ -591,7 +576,7 @@ void readDataFromMemory(void)
 		ucSMSStoredNo=0;
 	if(ucSMSSentNo>10)
 		ucSMSSentNo=0;
-	if(ucEnableCSV==0)
+	if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 	{
 	UARTSendStr(UART_DEBUG,(UINT8 *)"\r SMS Save Cntr :");
 	UARTSendLong(UART_DEBUG,ucSMSStoredNo,5);
@@ -609,23 +594,41 @@ void readDataFromMemory(void)
 	readStringFromEeprom(ucSerAppParaConfig,EEPROM_LOC_SER_APP_PARA_CONFIG,38);
 	readStringFromEeprom(ucSerAppRecData,EEPROM_LOC_SER_APP_REC_DATA,38);
 	
-	if(ucEnableCSV==0)
 	{
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Server Address : ");
-		UARTSendStr(UART_DEBUG,ucSerAdd);
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Server Path : ");
-		UARTSendStr(UART_DEBUG,ucSerPath);
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Server Port : ");
-		UARTSendStr(UART_DEBUG,ucSerPort);
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Path reg : ");
-		UARTSendStr(UART_DEBUG,ucSerAppReg);
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Path sys con : ");
-		UARTSendStr(UART_DEBUG,ucSerAppSysConfig);
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Path para con : ");
-		UARTSendStr(UART_DEBUG,ucSerAppParaConfig);
-		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Path data : ");
-		UARTSendStr(UART_DEBUG,ucSerAppRecData);
+		UINT8 ucApiVersion=0;
+		readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_SERVER_API_VERSION,&ucApiVersion);
+		if(ucApiVersion!=SERVER_API_VERSION_CURRENT)
+		{
+			storeStringToEeprom((UINT8*)"iot.mavinsandeep.co.in",EEPROM_LOC_DATA_SER_ADD,48);
+			storeStringToEeprom((UINT8*)"/",EEPROM_LOC_DATA_SER_PATH,98);
+			storeStringToEeprom((UINT8*)"8085",EEPROM_LOC_DATA_SER_PORT,8);
+			storeStringToEeprom((UINT8*)"api/register",EEPROM_LOC_SER_APP_REG,38);
+			storeStringToEeprom((UINT8*)"api/system-config",EEPROM_LOC_SER_APP_SYS_CONFIG,38);
+			storeStringToEeprom((UINT8*)"api/param-config",EEPROM_LOC_SER_APP_PARA_CONFIG,38);
+			storeStringToEeprom((UINT8*)"api/data",EEPROM_LOC_SER_APP_REC_DATA,38);
+			writeExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_SERVER_API_VERSION,SERVER_API_VERSION_CURRENT);
+			readStringFromEeprom(ucSerAdd,EEPROM_LOC_DATA_SER_ADD,48);
+			readStringFromEeprom(ucSerPath,EEPROM_LOC_DATA_SER_PATH,98);
+			readStringFromEeprom(ucSerPort,EEPROM_LOC_DATA_SER_PORT,8);
+			readStringFromEeprom(ucSerAppReg,EEPROM_LOC_SER_APP_REG,38);
+			readStringFromEeprom(ucSerAppSysConfig,EEPROM_LOC_SER_APP_SYS_CONFIG,38);
+			readStringFromEeprom(ucSerAppParaConfig,EEPROM_LOC_SER_APP_PARA_CONFIG,38);
+			readStringFromEeprom(ucSerAppRecData,EEPROM_LOC_SER_APP_REC_DATA,38);
+		}
 	}
+	UARTSendStr(UART_DEBUG,(UINT8*)"\r\n====================================================\r\nVANMEN IoT Controller\r\nServer: https://");
+	UARTSendStr(UART_DEBUG,ucSerAdd);
+	UARTSendStr(UART_DEBUG,(UINT8*)":");
+	UARTSendStr(UART_DEBUG,ucSerPort);
+	UARTSendStr(UART_DEBUG,(UINT8*)"\r\nEndpoints:\r\nPOST /");
+	UARTSendStr(UART_DEBUG,ucSerAppReg);
+	UARTSendStr(UART_DEBUG,(UINT8*)" - Device Registration\r\nPOST /");
+	UARTSendStr(UART_DEBUG,ucSerAppSysConfig);
+	UARTSendStr(UART_DEBUG,(UINT8*)" - System Configuration\r\nPOST /");
+	UARTSendStr(UART_DEBUG,ucSerAppParaConfig);
+	UARTSendStr(UART_DEBUG,(UINT8*)" - DAQ Parameter Config\r\nPOST /");
+	UARTSendStr(UART_DEBUG,ucSerAppRecData);
+	UARTSendStr(UART_DEBUG,(UINT8*)" - Telemetry Ingestion\r\nPOST /api/relay-config - Relay Module Config\r\nGET  /health - Health Check\r\n====================================================\r\n");
 	
 	
 	readStringFromEeprom(ucGPRSAPNStr,EEPROM_LOC_GPRS_APN,23);
@@ -828,7 +831,7 @@ void readDataFromMemory(void)
 //	UARTSendLong(UART_DEBUG,ucRelay3OffMin2,2);
 	
 	
-	if(ucEnableCSV==0)
+	if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 	{
 		UARTSendStr(UART_DEBUG,(UINT8 *)"\r Trans period = ");
 	}
@@ -836,7 +839,7 @@ void readDataFromMemory(void)
 	for(ucStatusF=0;ucStatusF<8;ucStatusF++)
 	{
 		readExtEEPROMChar(EEPROM_ADD,EEPROM_LOC_TRANS_PERIOD+ucStatusF,&ucTransPeriod[ucStatusF]);
-		if(ucEnableCSV==0)
+		if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 		UARTSendChar(UART_DEBUG,ucTransPeriod[ucStatusF]);
 	}
 	
@@ -846,8 +849,6 @@ void readDataFromMemory(void)
 	
 	for(ulCntrF=0;ulCntrF<ulSystemNoOfParameters;ulCntrF++)
 	{
-		if(ucEnableCSV==0)
-		//UARTSendStr(UART_DEBUG,(UINT8*)"\r\r");
 		readParaConfig(ulCntrF);
 		
 		
@@ -866,7 +867,7 @@ void readDataFromMemory(void)
 		//	       writeExtEEPROMFloat(EEPROM_ADD,uiAddressF, sParaConfig[ulParaCntrF].para.value.fValue);
 		//	}
 		}
-		if(ucEnableCSV==0)
+		if(SHOW_VERBOSE_STARTUP && ucEnableCSV==0)
 		displayPraConfig(ulCntrF);
 	}
 	

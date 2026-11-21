@@ -6,7 +6,7 @@ This guide describes the backend requests and responses implemented by this firm
 
 ## 1. System Architecture & Communication Flow
 
-The device communicates with backend endpoints over HTTPS through its cellular modem (2G or 4G mode). The modem uses TLS 1.2 with SNI and validates the server certificate using a CA certificate provisioned in modem UFS as `ca.pem`. The configured backend port should normally be `443`.
+The device communicates with backend endpoints over HTTPS through its cellular modem (2G or 4G mode). The modem uses TLS 1.2 with SNI and validates the server certificate using a CA certificate provisioned in modem UFS as `ca.pem`. The firmware default is `https://iot.mavinsandeep.co.in:8085`; that port must accept HTTPS.
 
 ```mermaid
 sequenceDiagram
@@ -39,13 +39,13 @@ sequenceDiagram
 
 ## 2. API Endpoints Specification
 
-All routes must be served on the configured host and port (normally HTTPS port `443`). The CA certificate chain required to validate the server must be installed in the modem file system as `UFS:ca.pem` before these exchanges can succeed.
+All routes must be served on the configured host and port (default HTTPS port `8085`). The CA certificate chain required to validate the server must be installed in the modem file system as `UFS:ca.pem` before these exchanges can succeed.
 
 ---
 
 ### Endpoint 1: Device Registration
 
-On first registration, the firmware posts the form field `IMIENumber=<IMEI>` to the application stored in `ucSerAppReg` (default `IMIERegistrationPost.aspx`).
+On first registration, the firmware posts the form field `IMIENumber=<IMEI>` to `POST /api/register` (stored internally as `api/register`).
 
 The response must contain the legacy token `$SysID=<8 hex characters>#`. The firmware extracts this token, stores the system ID, marks the device registered, and processes any additional legacy command fields in the response. Registration does **not** use the JSON configuration response parser.
 
@@ -62,7 +62,7 @@ $SysID=5E0D0000#
 Called by the device after registration to obtain operational intervals and endpoint routes.
 
 * **Method:** `POST`
-* **Path:** the application stored in `ucSerAppSysConfig` (default `systemConfigPost.aspx`)
+* **Path:** `POST /api/system-config` (stored internally as `api/system-config`)
 * **JSON Body:**
   ```json
   {
@@ -76,9 +76,9 @@ Called by the device after registration to obtain operational intervals and endp
 {
   "SYSTEM_ID": "00000D5E",
   "SERVER_ADD": "iot.mavinsandeep.co.in",
-  "SERVER_PORT": "443",
+  "SERVER_PORT": "8085",
   "SERVER_PATH": "/",
-  "SER_APP_DATA": "realtimeDataPost.aspx",
+  "SER_APP_DATA": "api/data",
   "NO_OF_PARAMETERS": "02",
   "DATA_ACQ_MINUTES": "00000001",
   "DATA_TRANS_MINUTES": "00000001"
@@ -90,9 +90,9 @@ Called by the device after registration to obtain operational intervals and endp
 |---|---|---|
 | `SYSTEM_ID` | String (8 hex) | Device System Identifier |
 | `SERVER_ADD` | String (max 49) | Server address |
-| `SERVER_PORT` | String (max 6) | Backend HTTPS port (normally `"443"`) |
+| `SERVER_PORT` | String (max 6) | Backend HTTPS port (default `"8085"`) |
 | `SERVER_PATH` | String (max 49) | Base URI path prefix (default `"/"`) |
-| `SER_APP_DATA` | String | Telemetry endpoint application name (default `realtimeDataPost.aspx`) |
+| `SER_APP_DATA` | String | Telemetry endpoint path (default `api/data`) |
 | `NO_OF_PARAMETERS` | Hex string | At least two uppercase hex digits; firmware reads the first two (e.g. `02` = 2); max 200 entries |
 | `DATA_ACQ_MINUTES` | Hex string | Eight-digit uppercase hex interval (e.g. `00000001` = 1) |
 | `DATA_TRANS_MINUTES` | Hex string | Eight-digit uppercase hex interval (e.g. `00000001` = 1) |
@@ -106,7 +106,7 @@ The firmware requires the `SYSTEM_ID` string to match the registered ID and acce
 Downloads the sensor / Modbus registers table into the device's EEPROM.
 
 * **Method:** `POST`
-* **Path:** the application stored in `ucSerAppParaConfig` (default `paraconfigPost.aspx`)
+* **Path:** `POST /api/param-config` (stored internally as `api/param-config`)
 * **JSON Body:**
   ```json
   {
@@ -165,7 +165,7 @@ The compact parser currently handles built-in source IDs `00`–`11` and RS485 s
 Uploaded periodically by the device.
 
 * **Method:** `POST`
-* **Path:** the application stored in `ucSerAppRecData` (default `/realtimeDataPost.aspx`)
+* **Path:** `POST /api/data` (stored internally as `api/data`)
 * **Headers:** `Content-Type: application/x-www-form-urlencoded`
 * **Body:**
   ```http
@@ -223,12 +223,12 @@ CREATE TABLE devices (
     imei VARCHAR(15) UNIQUE NOT NULL,       -- Device hardware IMEI
     name VARCHAR(100),
     server_add VARCHAR(50) DEFAULT 'iot.mavinsandeep.co.in',
-    server_port VARCHAR(6) DEFAULT '80',
+    server_port VARCHAR(6) DEFAULT '8085',
     server_path VARCHAR(50) DEFAULT '/',
-    registration_app VARCHAR(38) DEFAULT 'IMIERegistrationPost.aspx',
-    system_config_app VARCHAR(38) DEFAULT 'systemConfigPost.aspx',
-    parameter_config_app VARCHAR(38) DEFAULT 'paraconfigPost.aspx',
-    data_app VARCHAR(38) DEFAULT 'realtimeDataPost.aspx',
+    registration_app VARCHAR(38) DEFAULT 'api/register',
+    system_config_app VARCHAR(38) DEFAULT 'api/system-config',
+    parameter_config_app VARCHAR(38) DEFAULT 'api/param-config',
+    data_app VARCHAR(38) DEFAULT 'api/data',
     acq_interval_min INT DEFAULT 1,
     trans_interval_min INT DEFAULT 5,
     last_seen_at TIMESTAMP WITH TIME ZONE,
@@ -393,7 +393,7 @@ def decode_data000_payload(hex_str: str):
 # =====================================================================
 # 1. Config & Provisioning Handlers
 # =====================================================================
-@app.post("/IMIERegistrationPost.aspx")
+@app.post("/api/register")
 async def register_device(request: Request):
     form_data = await request.form()
     imei = form_data.get("IMIENumber")
@@ -403,8 +403,8 @@ async def register_device(request: Request):
     return PlainTextResponse("$SysID=5E0D0000#", status_code=200)
 
 
-@app.post("/systemConfigPost.aspx")
-@app.post("/paraconfigPost.aspx")
+@app.post("/api/system-config")
+@app.post("/api/param-config")
 async def handle_hw_request(request: Request):
     params = await request.json()
 
@@ -416,9 +416,9 @@ async def handle_hw_request(request: Request):
         return JSONResponse({
             "SYSTEM_ID": "00000D5E",
             "SERVER_ADD": "iot.mavinsandeep.co.in",
-            "SERVER_PORT": "443",
+            "SERVER_PORT": "8085",
             "SERVER_PATH": "/",
-            "SER_APP_DATA": "realtimeDataPost.aspx",
+            "SER_APP_DATA": "api/data",
             "NO_OF_PARAMETERS": "02",
             "DATA_ACQ_MINUTES": "00000001",
             "DATA_TRANS_MINUTES": "00000001"
@@ -447,7 +447,7 @@ async def handle_hw_request(request: Request):
     return JSONResponse({"status": "error", "msg": "unknown request"}, status_code=400)
 
 
-@app.post("/relayModulesConfigPost.aspx")
+@app.post("/api/relay-config")
 async def handle_relay_modules_config(request: Request):
     params = await request.json()
     system_id = params.get("SYSTEM_ID")
@@ -480,7 +480,7 @@ async def handle_relay_modules_config(request: Request):
 # =====================================================================
 # 2. Telemetry Ingestion Handler
 # =====================================================================
-@app.post("/realtimeDataPost.aspx")
+@app.post("/api/data")
 async def handle_telemetry(request: Request):
     form_data = await request.form()
     data_payload = form_data.get("DATA000")
@@ -507,10 +507,10 @@ async def handle_telemetry(request: Request):
 if __name__ == "__main__":
     import uvicorn
     # Keep the app on an internal port and terminate TLS at the public reverse proxy.
-    uvicorn.run(app, host="127.0.0.1", port=8080)
+    uvicorn.run(app, host="127.0.0.1", port=8085)
 ```
 
-The firmware connects to the public HTTPS endpoint on port `443`. In this example, a reverse proxy terminates TLS and forwards requests to the local Uvicorn process on port `8080`; install the public endpoint's trusted CA chain on the modem as `UFS:ca.pem`. The server certificate must be valid for the configured DNS name because the firmware enables SNI and server certificate verification.
+The firmware connects to `https://iot.mavinsandeep.co.in:8085`. The HTTPS listener must terminate TLS on port `8085` and forward these routes to the backend process. Install the listener's trusted CA chain on the modem as `UFS:ca.pem`. The server certificate must be valid for the configured DNS name because the firmware enables SNI and server certificate verification. The Uvicorn snippet is a local HTTP development server; it needs TLS termination in front of it for device traffic.
 
 ---
 
@@ -519,7 +519,7 @@ The firmware connects to the public HTTPS endpoint on port `443`. In this exampl
 External relay modules are configured independently from the controller’s sensor parameters. The firmware downloads this endpoint after the parameter configuration succeeds:
 
 ```http
-POST /relayModulesConfigPost.aspx
+POST /api/relay-config
 Content-Type: application/json
 ```
 
@@ -603,11 +603,11 @@ The HTTPS exchange transports the downloaded broker credentials. Install the ser
 
 ## 5. Testing & Verification Guide
 
-For local backend development, these requests target Uvicorn directly over HTTP. The device itself must connect through the deployed HTTPS reverse proxy described above.
+For local backend development, these requests target Uvicorn directly over HTTP on port `8085`. The device itself requires HTTPS on `iot.mavinsandeep.co.in:8085`.
 
 ### Test 1: Fetch System Configuration
 ```bash
-curl -X POST "http://localhost:8080/systemConfigPost.aspx" \
+curl -X POST "http://localhost:8085/api/system-config" \
      -H "Content-Type: application/json" \
      -d '{"TYPE":"SERVER_DETAILS","SYSTEM_ID":"00000D5E"}'
 ```
@@ -617,7 +617,7 @@ curl -X POST "http://localhost:8080/systemConfigPost.aspx" \
 
 ### Test 2: Fetch Parameter Configuration
 ```bash
-curl -X POST "http://localhost:8080/paraconfigPost.aspx" \
+curl -X POST "http://localhost:8085/api/param-config" \
      -H "Content-Type: application/json" \
      -d '{"TYPE":"PARA_CONFIG","SYS_ID":"00000D5E","FROM":"000","TO":"001"}'
 ```
@@ -631,7 +631,7 @@ The following sample payload contains:
 * Body: Param 0 = `50.12f` (`E17A4842`), Param 1 = `100.0f` (`0000C842`)
 
 ```bash
-curl -X POST "http://localhost:8080/realtimeDataPost.aspx" \
+curl -X POST "http://localhost:8085/api/data" \
      -H "Content-Type: application/x-www-form-urlencoded" \
      -d "DATA000=010000005E0D0000191126153000280100000100000002000000E17A48420000C842"
 ```
